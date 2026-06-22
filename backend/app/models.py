@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer, Float
+from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer, Float, Boolean
 from sqlalchemy.orm import relationship
 from .database import Base
 
@@ -24,8 +24,11 @@ class User(Base):
     id = Column(String(32), primary_key=True, default=_uid)
     org_id = Column(String(32), ForeignKey("orgs.id"), nullable=False, index=True)
     email = Column(String(255), unique=True, index=True, nullable=False)
+    name = Column(String(255))  # User's display name
     hashed_password = Column(String(255), nullable=False)
     role = Column(String(32), default="researcher", nullable=False)  # admin | researcher | viewer
+    is_active = Column(Boolean, default=True)
+    last_login = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     org = relationship("Org", back_populates="users")
 
@@ -36,6 +39,7 @@ class Project(Base):
     org_id = Column(String(32), ForeignKey("orgs.id"), nullable=False, index=True)
     name = Column(String(255), nullable=False)
     description = Column(Text, default="")
+    status = Column(String(32), default="active")  # active | completed | archived
     created_by = Column(String(32), ForeignKey("users.id"))
     created_at = Column(DateTime, default=datetime.utcnow)
     org = relationship("Org", back_populates="projects")
