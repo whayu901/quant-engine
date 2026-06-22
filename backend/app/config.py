@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import List, Dict
 
 
 class Settings(BaseSettings):
@@ -25,7 +26,7 @@ class Settings(BaseSettings):
     storage_backend: str = "local"
     media_dir: str = "./media"
     s3_bucket: str = ""
-    s3_region: str = "us-east-1"
+    s3_region: str = "ap-southeast-1"  # SEA default: Singapore
     s3_access_key: str = ""
     s3_secret_key: str = ""
     s3_endpoint_url: str = ""  # set for MinIO / non-AWS
@@ -39,6 +40,53 @@ class Settings(BaseSettings):
 
     # Dev/test: run Celery tasks inline (no broker needed)
     celery_task_always_eager: bool = False
+
+    # Southeast Asia defaults
+    default_data_region: str = "ap-southeast-1"  # Singapore
+    supported_data_regions: List[str] = [
+        "ap-southeast-1",  # Singapore
+        "ap-southeast-3",  # Jakarta
+    ]
+
+    # SEA Languages with code-mixing support
+    supported_languages: Dict[str, str] = {
+        "id": "Bahasa Indonesia",
+        "ms": "Bahasa Melayu",
+        "th": "ไทย (Thai)",
+        "vi": "Tiếng Việt",
+        "fil": "Filipino/Tagalog",
+        "en": "English",
+        "id-en": "Bahasa Indonesia + English (code-mixed)",
+        "fil-en": "Taglish (Filipino + English)",
+        "en-sg": "Singlish",
+        "ms-en": "Manglish (Malay + English)",
+    }
+
+    # Regional/local languages detection
+    regional_languages: List[str] = ["jv", "su", "min"]  # Javanese, Sundanese, Minangkabau
+
+    # Currency defaults
+    supported_currencies: Dict[str, str] = {
+        "IDR": "Indonesian Rupiah",
+        "SGD": "Singapore Dollar",
+        "MYR": "Malaysian Ringgit",
+        "THB": "Thai Baht",
+        "VND": "Vietnamese Dong",
+        "PHP": "Philippine Peso",
+        "USD": "US Dollar",
+    }
+    default_currency: str = "USD"
+
+    # ASR provider selection per language
+    asr_language_routing: Dict[str, str] = {
+        "id": "deepgram",  # Best for Bahasa Indonesia
+        "ms": "assemblyai",
+        "th": "deepgram",
+        "vi": "assemblyai",
+        "fil": "deepgram",
+        "en": "deepgram",
+        "default": "whisper_local",  # Fallback for unsupported languages
+    }
 
 
 settings = Settings()

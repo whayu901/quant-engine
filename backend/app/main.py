@@ -1,12 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
-from .database import Base, engine
 from . import models  # noqa: F401  (register models)
 from .routers import auth, projects, transcripts, analyses, usage
 
-# Dev convenience: create tables on boot. For production use Alembic migrations.
-Base.metadata.create_all(bind=engine)
+# Tables are now managed by Alembic migrations
+# Run: alembic upgrade head
 
 app = FastAPI(title="Qual Engine API", version="0.1.0",
               description="Qualitative research analysis engine — transcript to insight.")
