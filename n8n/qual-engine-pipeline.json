@@ -1,0 +1,349 @@
+{
+  "name": "Qual Engine — Analysis Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "qual-engine",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-in",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ],
+      "webhookId": "qual-engine"
+    },
+    {
+      "parameters": {
+        "jsCode": "const t = ($json.body && $json.body.transcript) || $json.transcript || '';\nconst prompt = \"Kamu analis riset kualitatif senior di agensi market research. Analisis transkrip FGD/IDI berikut. Identifikasi 3-5 tema kunci untuk keputusan brand/marketing. Jawab HANYA JSON valid tanpa markdown.\\n\" +\n'{\"respondentCount\":<angka>,\"themes\":[{\"id\":1,\"name\":\"<tema>\",\"description\":\"<1 kalimat>\",\"prevalence\":\"Tinggi|Sedang|Rendah\",\"sentiment\":\"Positif|Netral|Negatif|Campuran\"}]}' +\n\"\\n\\nTRANSKRIP:\\n\" + t;\nreturn [{ json: { transcript: t, prompt } }];"
+      },
+      "id": "build-themes-prompt",
+      "name": "Build Themes Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"claude-sonnet-4-6\", \"max_tokens\": 1800, \"messages\": [ { \"role\": \"user\", \"content\": $json.prompt } ] } }}",
+        "options": {}
+      },
+      "id": "claude-themes",
+      "name": "Claude Themes",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        440,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const txt = ($json.content && $json.content[0] && $json.content[0].text) || '';\nconst clean = txt.replace(/```json/gi, '').replace(/```/g, '').trim();\nconst s = clean.indexOf('{'), e = clean.lastIndexOf('}');\nconst data = JSON.parse(clean.slice(s, e + 1));\nconst transcript = $('Build Themes Prompt').first().json.transcript;\nreturn [{ json: { transcript, respondentCount: data.respondentCount, themes: data.themes } }];"
+      },
+      "id": "parse-themes",
+      "name": "Parse Themes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        660,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const themeList = $json.themes.map(t => t.id + '. ' + t.name).join('\\n');\nconst prompt = \"Kamu analis riset kualitatif. Untuk tiap tema, tarik 1-2 kutipan VERBATIM (persis apa adanya) dari transkrip. Jangan mengarang. Jawab HANYA JSON valid.\\n\" +\n'{\"verbatims\":[{\"themeId\":<id>,\"quote\":\"<kutipan persis>\",\"speaker\":\"<label>\"}]}' +\n\"\\n\\nTEMA:\\n\" + themeList + \"\\n\\nTRANSKRIP:\\n\" + $json.transcript;\nreturn [{ json: Object.assign({}, $json, { prompt }) }];"
+      },
+      "id": "build-verbatim-prompt",
+      "name": "Build Verbatim Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        880,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"claude-sonnet-4-6\", \"max_tokens\": 1800, \"messages\": [ { \"role\": \"user\", \"content\": $json.prompt } ] } }}",
+        "options": {}
+      },
+      "id": "claude-verbatims",
+      "name": "Claude Verbatims",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1100,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const txt = ($json.content && $json.content[0] && $json.content[0].text) || '';\nconst clean = txt.replace(/```json/gi, '').replace(/```/g, '').trim();\nconst s = clean.indexOf('{'), e = clean.lastIndexOf('}');\nconst data = JSON.parse(clean.slice(s, e + 1));\nconst prev = $('Build Verbatim Prompt').first().json;\nreturn [{ json: { transcript: prev.transcript, respondentCount: prev.respondentCount, themes: prev.themes, verbatims: data.verbatims } }];"
+      },
+      "id": "parse-verbatims",
+      "name": "Parse Verbatims",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1320,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const themeList = $json.themes.map(t => t.id + '. ' + t.name).join('\\n');\nconst prompt = \"Kamu analis riset kualitatif senior yang menulis untuk pengambil keputusan brand/marketing (FMCG Indonesia). Tulis topline eksekutif (3-4 kalimat) dan 3 implikasi bisnis actionable. Jawab HANYA JSON valid.\\n\" +\n'{\"topline\":\"<3-4 kalimat>\",\"implications\":[\"<rek 1>\",\"<rek 2>\",\"<rek 3>\"]}' +\n\"\\n\\nTEMA:\\n\" + themeList + \"\\n\\nTRANSKRIP:\\n\" + $json.transcript;\nreturn [{ json: Object.assign({}, $json, { prompt }) }];"
+      },
+      "id": "build-topline-prompt",
+      "name": "Build Topline Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1100,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            },
+            {
+              "name": "content-type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"model\": \"claude-sonnet-4-6\", \"max_tokens\": 1800, \"messages\": [ { \"role\": \"user\", \"content\": $json.prompt } ] } }}",
+        "options": {}
+      },
+      "id": "claude-topline",
+      "name": "Claude Topline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1320,
+        520
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_ME",
+          "name": "Anthropic API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const txt = ($json.content && $json.content[0] && $json.content[0].text) || '';\nconst clean = txt.replace(/```json/gi, '').replace(/```/g, '').trim();\nconst s = clean.indexOf('{'), e = clean.lastIndexOf('}');\nconst data = JSON.parse(clean.slice(s, e + 1));\nconst prev = $('Build Topline Prompt').first().json;\nreturn [{ json: { respondentCount: prev.respondentCount, themes: prev.themes, verbatims: prev.verbatims, topline: data.topline, implications: data.implications } }];"
+      },
+      "id": "merge-result",
+      "name": "Merge Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1540,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        2000,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Build Themes Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Themes Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude Themes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Themes": {
+      "main": [
+        [
+          {
+            "node": "Parse Themes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Themes": {
+      "main": [
+        [
+          {
+            "node": "Build Verbatim Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Verbatim Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude Verbatims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Verbatims": {
+      "main": [
+        [
+          {
+            "node": "Parse Verbatims",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Verbatims": {
+      "main": [
+        [
+          {
+            "node": "Build Topline Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Topline Prompt": {
+      "main": [
+        [
+          {
+            "node": "Claude Topline",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Claude Topline": {
+      "main": [
+        [
+          {
+            "node": "Merge Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Result": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
