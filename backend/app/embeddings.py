@@ -24,17 +24,27 @@ class EmbeddingService:
 
     def __init__(self, use_mock: bool = None):
         """Initialize embedding service"""
-        self.use_mock = use_mock if use_mock is not None else not bool(settings.openai_api_key if hasattr(settings, 'openai_api_key') else None)
-        self.model = "text-embedding-ada-002"
-        self.dimension = 1536  # OpenAI ada-002 dimension
+        # Check if API key exists in settings
+        has_openai = hasattr(settings, 'openai_api_key') and settings.openai_api_key
+        self.use_mock = use_mock if use_mock is not None else not has_openai
+        self.model = "text-embedding-3-small"  # Updated to latest model
+        self.dimension = 1536  # Dimension for text-embedding-3-small
 
         if not self.use_mock:
             try:
                 import openai
                 self.client = openai.Client(api_key=settings.openai_api_key)
-            except:
-                print("⚠️ OpenAI not configured. Using mock embeddings.")
+                # Test the API key
+                test_response = self.client.embeddings.create(
+                    model=self.model,
+                    input="test"
+                )
+                print(f"✅ OpenAI embeddings configured with {self.model}")
+            except Exception as e:
+                print(f"⚠️ OpenAI not configured: {e}. Using mock embeddings.")
                 self.use_mock = True
+        else:
+            print("ℹ️ Using mock embeddings (no OpenAI API key configured)")
 
     def generate_embedding(self, text: str) -> List[float]:
         """

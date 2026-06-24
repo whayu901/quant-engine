@@ -1,15 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from .. import models, schemas, security
 from ..database import get_db
 from ..deps import get_current_user
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/register", response_model=schemas.Token)
-def register(body: schemas.RegisterIn, db: Session = Depends(get_db)):
+@limiter.limit("5/minute")  # Prevent account creation abuse
+def register(request: Request, body: schemas.RegisterIn, db: Session = Depends(get_db)):
     if db.query(models.User).filter(models.User.email == body.email).first():
         raise HTTPException(400, "Email already registered")
     org = models.Org(name=body.org_name, plan="free")
@@ -21,7 +25,8 @@ def register(body: schemas.RegisterIn, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=schemas.Token)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("10/minute")  # Prevent brute force attacks
+def login(request: Request, form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     u = db.query(models.User).filter(models.User.email == form.username).first()
     if not u or not security.verify_pw(form.password, u.hashed_password):
         raise HTTPException(401, "Invalid credentials")

@@ -1,23 +1,32 @@
 from datetime import datetime, timedelta
 from jose import jwt, JWTError
+from passlib.context import CryptContext
 from .config import settings
-import hashlib
+import os
+import secrets
 
-# Temporary fix for bcrypt issue - use simple hash
-# from passlib.context import CryptContext
-# pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Use bcrypt for secure password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 ALGO = "HS256"
 
 
 def hash_pw(p: str) -> str:
-    """Simple hash for demo - NOT for production"""
-    return hashlib.sha256(p.encode()).hexdigest()
+    """Hash password using bcrypt with salt"""
+    return pwd_context.hash(p)
 
 
 def verify_pw(p: str, h: str) -> bool:
-    """Simple verify for demo - NOT for production"""
-    return hashlib.sha256(p.encode()).hexdigest() == h
+    """Verify password against bcrypt hash"""
+    try:
+        return pwd_context.verify(p, h)
+    except Exception:
+        # Handle potential issues with legacy SHA256 hashes
+        # This allows gradual migration from SHA256 to bcrypt
+        import hashlib
+        if len(h) == 64:  # SHA256 produces 64 char hex string
+            return hashlib.sha256(p.encode()).hexdigest() == h
+        return False
 
 
 def create_token(sub: str) -> str:

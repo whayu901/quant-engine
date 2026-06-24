@@ -32,6 +32,8 @@ class ChatMessageRequest(BaseModel):
     message: str
     use_rag: bool = True
     top_k: int = 5
+    cross_project: bool = False
+    project_ids: Optional[List[str]] = None
 
 
 class SemanticSearchRequest(BaseModel):
@@ -195,7 +197,9 @@ async def send_chat_message(
         session_id=session_id,
         message=request.message,
         use_rag=request.use_rag,
-        top_k=request.top_k
+        top_k=request.top_k,
+        cross_project=request.cross_project,
+        project_ids=request.project_ids
     )
 
     return result
@@ -270,6 +274,80 @@ async def semantic_search(
         "query": request.query,
         "results": results,
         "total": len(results)
+    }
+
+
+@router.post("/search/cross-project")
+async def cross_project_search(
+    request: SemanticSearchRequest,
+    project_ids: Optional[List[str]] = Query(None, description="Specific project IDs to search. If not provided, searches all accessible projects"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Perform semantic search across multiple projects"""
+    # Get accessible projects
+    accessible_projects = db.query(Project).filter_by(
+        org_id=current_user.org_id
+    )
+
+    if project_ids:
+        # Filter to specific projects if provided
+        accessible_projects = accessible_projects.filter(Project.id.in_(project_ids))
+
+    accessible_project_list = accessible_projects.all()
+
+    if not accessible_project_list:
+        raise HTTPException(status_code=404, detail="No accessible projects found")
+
+    # Perform cross-project search
+    vector_service = VectorStoreService(db)
+    all_results = []
+
+    for project in accessible_project_list:
+        try:
+            results = await vector_service.semantic_search(
+                query=request.query,
+                project_id=project.id,
+                source_types=request.source_types,
+                top_k=request.top_k,
+                threshold=request.threshold
+            )
+
+            # Add project info to results
+            for result in results:
+                result['project_id'] = project.id
+                result['project_name'] = project.name
+
+            all_results.extend(results)
+        except Exception as e:
+            # Log error but continue with other projects
+            print(f"Error searching project {project.id}: {e}")
+
+    # Sort all results by similarity score and take top_k
+    all_results.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+    final_results = all_results[:request.top_k]
+
+    # Log cross-project search
+    search_log = SemanticSearchLog(
+        org_id=current_user.org_id,
+        project_id=None,  # No specific project for cross-project search
+        user_id=current_user.id,
+        query_text=request.query,
+        search_type='cross_project_similarity',
+        top_k=request.top_k,
+        similarity_threshold=request.threshold,
+        results_count=len(final_results),
+        result_ids=[r['id'] for r in final_results],
+        result_scores=[r.get('similarity', 0) for r in final_results]
+    )
+    db.add(search_log)
+    db.commit()
+
+    return {
+        "query": request.query,
+        "projects_searched": len(accessible_project_list),
+        "results": final_results,
+        "total": len(final_results)
     }
 
 
@@ -489,6 +567,66 @@ async def list_chat_templates(
             for t in templates
         ]
     }
+
+
+# Auto-Indexing Management
+
+@router.post("/index/auto")
+async def trigger_auto_indexing(
+    hours: Optional[int] = Query(24, description="Index content from last N hours"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Trigger auto-indexing for recent content"""
+    from ..auto_indexing import AutoIndexingService
+
+    # Admin only
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    service = AutoIndexingService(db)
+    stats = await service.index_recent_content(hours=hours)
+
+    return {
+        "status": "completed",
+        "hours": hours,
+        "indexed": stats
+    }
+
+
+@router.post("/index/all")
+async def index_all_content(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Index all unindexed content"""
+    from ..auto_indexing import AutoIndexingService
+
+    # Admin only
+    if current_user.role != 'admin':
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    service = AutoIndexingService(db)
+    stats = await service.run_indexing_pipeline()
+
+    return {
+        "status": "completed",
+        "indexed": stats
+    }
+
+
+@router.get("/index/stats")
+async def get_indexing_stats(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get current indexing statistics"""
+    from ..auto_indexing import AutoIndexingService
+
+    service = AutoIndexingService(db)
+    stats = service.get_indexing_stats()
+
+    return stats
 
 
 # Related Content

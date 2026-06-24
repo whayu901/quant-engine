@@ -40,9 +40,13 @@ export const AuthProvider = ({ children }) => {
       if (response.ok) {
         const details = await response.json();
         setUserDetails(details);
+      } else {
+        // If the endpoint doesn't exist or fails, just log it and continue
+        console.log('Admin user details endpoint not available or user not authorized');
       }
     } catch (error) {
-      console.error('Error fetching user details:', error);
+      // Don't let this block the login flow
+      console.log('Could not fetch additional user details:', error.message);
     }
   };
 
@@ -51,9 +55,12 @@ export const AuthProvider = ({ children }) => {
       const response = await fetch('http://localhost:8000/auth/login', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: JSON.stringify({ email, password }),
+        body: new URLSearchParams({
+          username: email,
+          password: password
+        }).toString(),
       });
 
       if (!response.ok) {
@@ -62,23 +69,40 @@ export const AuthProvider = ({ children }) => {
 
       const data = await response.json();
 
-      // Store token and basic user info
+      // Store token
       localStorage.setItem('token', data.access_token);
-      const userData = {
-        email: data.email,
-        role: data.role,
-        org_id: data.org_id,
-        user_id: data.user_id
+
+      // Fetch user details from /auth/me
+      const meResponse = await fetch('http://localhost:8000/auth/me', {
+        headers: {
+          'Authorization': `Bearer ${data.access_token}`
+        }
+      });
+
+      if (!meResponse.ok) {
+        throw new Error('Failed to fetch user details');
+      }
+
+      const userData = await meResponse.json();
+      console.log('User data from /auth/me:', userData);
+
+      // Store user info
+      const userInfo = {
+        email: userData.email,
+        role: userData.role,
+        org_id: userData.org_id,
+        user_id: userData.id,
+        name: userData.name
       };
-      localStorage.setItem('user', JSON.stringify(userData));
+      localStorage.setItem('user', JSON.stringify(userInfo));
+      setUser(userInfo);
 
-      setUser(userData);
-
-      // Fetch full user details including team
+      // Fetch additional user details if needed
       await fetchUserDetails(data.access_token);
 
       // Navigate based on role
-      navigateByRole(data.role);
+      console.log('Navigating based on role:', userData.role);
+      navigateByRole(userData.role);
 
       return { success: true };
     } catch (error) {

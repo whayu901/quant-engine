@@ -19,7 +19,10 @@ export function AuthProvider({ children }) {
   async function login(email, password) {
     const { access_token } = await api.login(email, password)
     localStorage.setItem('qe_token', access_token)
-    setUser(await api.me())
+    const userData = await api.me()
+    setUser(userData)
+    // Return the user data so the Login component can use it for navigation
+    return userData
   }
   async function register(email, password, org) {
     const { access_token } = await api.register(email, password, org)

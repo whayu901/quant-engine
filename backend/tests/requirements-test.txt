@@ -1,0 +1,29 @@
+# Testing dependencies for Qual Engine backend
+
+# Core testing
+pytest>=7.0.0
+pytest-asyncio>=0.20.0
+pytest-cov>=4.0.0
+pytest-xdist>=3.0.0  # Parallel test execution
+pytest-timeout>=2.1.0  # Timeout for hanging tests
+pytest-mock>=3.10.0  # Enhanced mocking
+
+# Fixtures and factories
+factory-boy>=3.2.0  # Factory pattern for test data
+faker>=15.0.0  # Fake data generation
+
+# Code quality
+coverage>=6.0
+coverage-badge>=1.0.0
+
+# Database testing
+sqlalchemy[asyncio]>=2.0.0
+
+# FastAPI testing
+httpx>=0.23.0
+
+# Assertions and utilities
+assertpy>=1.1  # Fluent assertion library
+
+# Code profiling (optional)
+pytest-benchmark>=4.0.0

@@ -217,12 +217,12 @@ class ContentAnalysisReport(Base):
     grid = relationship("AnalysisGrid", back_populates="reports")
 
 
-class Theme(Base):
+class AnalysisTheme(Base):
     """
     Themes extracted from analysis
     Can be hierarchical (parent/child themes)
     """
-    __tablename__ = "analysis_themes"  # Renamed to avoid conflict with existing themes table
+    __tablename__ = "analysis_themes"  # Different table from original themes table
 
     id = Column(String(36), primary_key=True, default=_uid)
     project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)

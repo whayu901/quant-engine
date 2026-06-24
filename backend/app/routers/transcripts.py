@@ -10,6 +10,10 @@ from ..tasks import transcribe_media
 
 router = APIRouter(tags=["transcripts"])
 
+# File size limits
+MAX_AUDIO_VIDEO_SIZE = 500 * 1024 * 1024  # 500MB
+MAX_TEXT_FILE_SIZE = 10 * 1024 * 1024     # 10MB
+
 AUDIO_VIDEO = ("audio/", "video/")
 
 
@@ -38,6 +42,14 @@ def upload_media(project_id: str, file: UploadFile = File(...),
             raise HTTPException(400, "Expected an audio or video file")
 
     raw = file.file.read()
+
+    # Validate file size
+    file_size = len(raw)
+    if file_size > MAX_AUDIO_VIDEO_SIZE:
+        raise HTTPException(413, f"File too large. Maximum size is {MAX_AUDIO_VIDEO_SIZE // (1024*1024)}MB")
+    if file_size == 0:
+        raise HTTPException(400, "Empty file")
+
     media = models.MediaAsset(org_id=user.org_id, project_id=project_id,
                               filename=file.filename, content_type=ctype, kind=kind)
     db.add(media); db.flush()
@@ -71,6 +83,14 @@ def upload_transcript(project_id: str, file: UploadFile = File(...),
                       db: Session = Depends(get_db)):
     owned_or_404(db, models.Project, project_id, user.org_id)
     raw = file.file.read()
+
+    # Validate file size
+    file_size = len(raw)
+    if file_size > MAX_TEXT_FILE_SIZE:
+        raise HTTPException(413, f"File too large. Maximum size is {MAX_TEXT_FILE_SIZE // (1024*1024)}MB")
+    if file_size == 0:
+        raise HTTPException(400, "Empty file")
+
     content = _extract_text(file.filename, raw)
     if not content.strip():
         raise HTTPException(400, "Empty or unreadable file")

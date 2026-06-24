@@ -1,21 +1,29 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import {
-  FileText, MessageSquare, Users, Clock, Search, Filter,
-  TrendingUp, Target, BookOpen, Mic, Video, Hash
-} from 'lucide-react';
-import { useAuth } from '../contexts/AuthContext';
-import { FixedSizeList as List } from 'react-window';
-import AutoSizer from 'react-virtualized-auto-sizer';
+  FileText,
+  MessageSquare,
+  Users,
+  Clock,
+  Search,
+  Filter,
+  TrendingUp,
+  Target,
+  BookOpen,
+  Mic,
+  Video,
+  Hash,
+} from "lucide-react";
+import { useAuth } from "../contexts/AuthContext";
+import { List } from "react-window";
+import { AutoSizer } from "react-virtualized-auto-sizer";
 
-const StatCard = ({ icon: Icon, title, value, subtitle, color = 'blue' }) => (
+const StatCard = ({ icon: Icon, title, value, subtitle, color = "blue" }) => (
   <div className="bg-white rounded-lg shadow p-6">
     <div className="flex items-center justify-between mb-4">
       <div className={`p-3 bg-${color}-100 rounded-lg`}>
         <Icon className={`h-6 w-6 text-${color}-600`} />
       </div>
-      {subtitle && (
-        <span className="text-sm text-gray-500">{subtitle}</span>
-      )}
+      {subtitle && <span className="text-sm text-gray-500">{subtitle}</span>}
     </div>
     <h3 className="text-2xl font-bold text-gray-900">{value}</h3>
     <p className="text-sm text-gray-600">{title}</p>
@@ -26,31 +34,38 @@ const TranscriptRow = ({ index, style, data }) => {
   const transcript = data[index];
 
   return (
-    <div style={style} className="flex items-center px-4 border-b hover:bg-gray-50">
+    <div
+      style={style}
+      className="flex items-center px-4 border-b hover:bg-gray-50"
+    >
       <div className="flex-1 py-3">
         <div className="flex items-center justify-between">
           <div>
             <p className="font-medium text-gray-900">
-              {transcript.participant_name || `Participant ${transcript.participant_id}`}
+              {transcript.participant_name ||
+                `Participant ${transcript.participant_id}`}
             </p>
             <p className="text-sm text-gray-500">
-              Project: {transcript.project_name} | Duration: {transcript.duration}
+              Project: {transcript.project_name} | Duration:{" "}
+              {transcript.duration}
             </p>
           </div>
           <div className="flex items-center space-x-4">
-            <span className={`px-2 py-1 text-xs rounded-full ${
-              transcript.status === 'completed' ? 'bg-green-100 text-green-800' :
-              transcript.status === 'in_progress' ? 'bg-yellow-100 text-yellow-800' :
-              'bg-gray-100 text-gray-800'
-            }`}>
+            <span
+              className={`px-2 py-1 text-xs rounded-full ${
+                transcript.status === "completed"
+                  ? "bg-green-100 text-green-800"
+                  : transcript.status === "in_progress"
+                    ? "bg-yellow-100 text-yellow-800"
+                    : "bg-gray-100 text-gray-800"
+              }`}
+            >
               {transcript.status}
             </span>
             <span className="text-sm text-gray-500">
               {new Date(transcript.created_at).toLocaleDateString()}
             </span>
-            <button className="text-blue-600 hover:text-blue-800">
-              View
-            </button>
+            <button className="text-blue-600 hover:text-blue-800">View</button>
           </div>
         </div>
       </div>
@@ -62,15 +77,21 @@ const AnalysisCard = ({ analysis }) => (
   <div className="bg-white rounded-lg shadow p-4 hover:shadow-lg transition-shadow cursor-pointer">
     <div className="flex items-start justify-between mb-3">
       <h4 className="font-medium text-gray-900">{analysis.title}</h4>
-      <span className={`px-2 py-1 text-xs rounded-full ${
-        analysis.type === 'thematic' ? 'bg-purple-100 text-purple-800' :
-        analysis.type === 'sentiment' ? 'bg-blue-100 text-blue-800' :
-        'bg-green-100 text-green-800'
-      }`}>
+      <span
+        className={`px-2 py-1 text-xs rounded-full ${
+          analysis.type === "thematic"
+            ? "bg-purple-100 text-purple-800"
+            : analysis.type === "sentiment"
+              ? "bg-blue-100 text-blue-800"
+              : "bg-green-100 text-green-800"
+        }`}
+      >
         {analysis.type}
       </span>
     </div>
-    <p className="text-sm text-gray-600 mb-3 line-clamp-2">{analysis.description}</p>
+    <p className="text-sm text-gray-600 mb-3 line-clamp-2">
+      {analysis.description}
+    </p>
     <div className="flex items-center justify-between text-sm">
       <span className="text-gray-500">{analysis.author}</span>
       <span className="text-gray-500">{analysis.date}</span>
@@ -78,13 +99,18 @@ const AnalysisCard = ({ analysis }) => (
     <div className="mt-3 flex items-center space-x-2">
       <div className="flex -space-x-2">
         {analysis.collaborators?.slice(0, 3).map((collab, idx) => (
-          <div key={idx} className="w-6 h-6 rounded-full bg-gray-300 border-2 border-white flex items-center justify-center text-xs">
+          <div
+            key={idx}
+            className="w-6 h-6 rounded-full bg-gray-300 border-2 border-white flex items-center justify-center text-xs"
+          >
             {collab.charAt(0)}
           </div>
         ))}
       </div>
       {analysis.collaborators?.length > 3 && (
-        <span className="text-xs text-gray-500">+{analysis.collaborators.length - 3}</span>
+        <span className="text-xs text-gray-500">
+          +{analysis.collaborators.length - 3}
+        </span>
       )}
     </div>
   </div>
@@ -96,13 +122,13 @@ const QualDashboard = () => {
     active_projects: 12,
     total_transcripts: 847,
     analyses_completed: 234,
-    team_members: 8
+    team_members: 8,
   });
   const [transcripts, setTranscripts] = useState([]);
   const [analyses, setAnalyses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
 
   useEffect(() => {
     fetchDashboardData();
@@ -113,61 +139,71 @@ const QualDashboard = () => {
       // Generate mock data for transcripts (simulating large dataset)
       const mockTranscripts = Array.from({ length: 10000 }, (_, i) => ({
         id: `transcript_${i}`,
-        participant_id: `P${String(i + 1).padStart(5, '0')}`,
+        participant_id: `P${String(i + 1).padStart(5, "0")}`,
         participant_name: `Participant ${i + 1}`,
         project_name: `Project ${Math.floor(i / 100) + 1}`,
         duration: `${Math.floor(Math.random() * 60 + 30)} mins`,
-        status: ['completed', 'in_progress', 'pending'][Math.floor(Math.random() * 3)],
-        created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString(),
-        language: ['English', 'Bahasa', 'Thai', 'Vietnamese'][Math.floor(Math.random() * 4)],
-        quality_score: Math.floor(Math.random() * 30) + 70
+        status: ["completed", "in_progress", "pending"][
+          Math.floor(Math.random() * 3)
+        ],
+        created_at: new Date(
+          Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000,
+        ).toISOString(),
+        language: ["English", "Bahasa", "Thai", "Vietnamese"][
+          Math.floor(Math.random() * 4)
+        ],
+        quality_score: Math.floor(Math.random() * 30) + 70,
       }));
 
       const mockAnalyses = [
         {
           id: 1,
-          title: 'Consumer Behavior Analysis - Q4 2024',
-          type: 'thematic',
-          description: 'Deep dive into shopping patterns and preferences across SEA markets with focus on digital adoption',
-          author: 'Sarah Chen',
-          date: '2 hours ago',
-          collaborators: ['John', 'Maria', 'Ahmed', 'Lisa']
+          title: "Consumer Behavior Analysis - Q4 2024",
+          type: "thematic",
+          description:
+            "Deep dive into shopping patterns and preferences across SEA markets with focus on digital adoption",
+          author: "Sarah Chen",
+          date: "2 hours ago",
+          collaborators: ["John", "Maria", "Ahmed", "Lisa"],
         },
         {
           id: 2,
-          title: 'Brand Perception Study',
-          type: 'sentiment',
-          description: 'Sentiment analysis of brand mentions across social media and interview transcripts',
-          author: 'Mike Johnson',
-          date: '5 hours ago',
-          collaborators: ['Emma', 'David']
+          title: "Brand Perception Study",
+          type: "sentiment",
+          description:
+            "Sentiment analysis of brand mentions across social media and interview transcripts",
+          author: "Mike Johnson",
+          date: "5 hours ago",
+          collaborators: ["Emma", "David"],
         },
         {
           id: 3,
-          title: 'Product Concept Testing Results',
-          type: 'coding',
-          description: 'Coded responses from 500+ participants on new product concepts',
-          author: 'Anna Lee',
-          date: '1 day ago',
-          collaborators: ['Tom', 'Rachel', 'Sam', 'Nina', 'Alex']
-        }
+          title: "Product Concept Testing Results",
+          type: "coding",
+          description:
+            "Coded responses from 500+ participants on new product concepts",
+          author: "Anna Lee",
+          date: "1 day ago",
+          collaborators: ["Tom", "Rachel", "Sam", "Nina", "Alex"],
+        },
       ];
 
       setTranscripts(mockTranscripts);
       setAnalyses(mockAnalyses);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching dashboard:', error);
+      console.error("Error fetching dashboard:", error);
       setLoading(false);
     }
   };
 
   const filteredTranscripts = useMemo(() => {
-    return transcripts.filter(t => {
-      const matchesSearch = searchTerm === '' ||
+    return transcripts.filter((t) => {
+      const matchesSearch =
+        searchTerm === "" ||
         t.participant_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         t.project_name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesFilter = filterStatus === 'all' || t.status === filterStatus;
+      const matchesFilter = filterStatus === "all" || t.status === filterStatus;
       return matchesSearch && matchesFilter;
     });
   }, [transcripts, searchTerm, filterStatus]);
@@ -186,7 +222,9 @@ const QualDashboard = () => {
       <div className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="py-6">
-            <h1 className="text-3xl font-bold text-gray-900">Qualitative Research Dashboard</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              Qualitative Research Dashboard
+            </h1>
             <p className="mt-2 text-sm text-gray-600">
               Manage interviews, transcripts, and qualitative analysis
             </p>
@@ -254,7 +292,7 @@ const QualDashboard = () => {
         <div className="mb-8">
           <h3 className="text-lg font-semibold mb-4">Recent Analyses</h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {analyses.map(analysis => (
+            {analyses.map((analysis) => (
               <AnalysisCard key={analysis.id} analysis={analysis} />
             ))}
           </div>
@@ -289,11 +327,12 @@ const QualDashboard = () => {
               </div>
             </div>
             <p className="text-sm text-gray-500">
-              Showing {filteredTranscripts.length.toLocaleString()} of {transcripts.length.toLocaleString()} transcripts
+              Showing {filteredTranscripts.length.toLocaleString()} of{" "}
+              {transcripts.length.toLocaleString()} transcripts
             </p>
           </div>
 
-          <div style={{ height: '500px' }}>
+          <div style={{ height: "500px" }}>
             <AutoSizer>
               {({ height, width }) => (
                 <List

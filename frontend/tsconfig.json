@@ -1,0 +1,53 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "useDefineForClassFields": true,
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+
+    /* Type Checking */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "strictFunctionTypes": true,
+
+    /* Module Resolution */
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "allowImportingTsExtensions": true,
+
+    /* Emit */
+    "noEmit": true,
+
+    /* React/JSX */
+    "jsx": "react-jsx",
+    "jsxImportSource": "react",
+
+    /* Path Mapping */
+    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
+    "paths": {
+      "@/*": ["src/*"]
+    },
+
+    /* Type Roots */
+    "typeRoots": ["node_modules/@types", "src/types"],
+    "types": ["vite/client", "react", "react-dom", "node"]
+  },
+  "include": [
+    "src/**/*",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "src/**/*.d.ts",
+    "vite.config.ts"
+  ],
+  "exclude": ["node_modules", "dist", "build"],
+  "references": [{ "path": "./tsconfig.node.json" }]
+}

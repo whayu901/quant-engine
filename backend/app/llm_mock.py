@@ -264,3 +264,80 @@ Recommend untuk conduct quantitative validation dan develop detailed implementat
     output_tokens = len(topline) // 4
 
     return result, (input_tokens, output_tokens)
+
+
+def write_topline(transcript: str, themes: List[Dict]) -> Tuple[Dict, Tuple[int, int]]:
+    """
+    Mock topline/executive summary generation matching real LLM interface
+    Takes transcript and themes, returns topline and implications
+    """
+    # Generate business implications based on themes
+    implications_by_theme = {
+        "Price Sensitivity": [
+            "Develop tiered pricing strategy to cater to different market segments",
+            "Introduce value packs or bundling options to improve perceived value",
+            "Communicate product benefits clearly to justify premium pricing"
+        ],
+        "User Experience": [
+            "Invest in UX/UI improvements based on user feedback",
+            "Implement user onboarding program to reduce friction",
+            "Create feedback loops for continuous experience optimization"
+        ],
+        "Brand Trust": [
+            "Build trust through transparency and consistent communication",
+            "Leverage local partnerships to enhance credibility",
+            "Implement customer testimonials and social proof strategies"
+        ],
+        "Product Quality": [
+            "Maintain strict quality control standards across all touchpoints",
+            "Develop quality assurance communication strategy",
+            "Create product education content to highlight quality features"
+        ],
+        "Customer Service": [
+            "Invest in customer service training and resources",
+            "Implement omnichannel support strategy",
+            "Create self-service resources to reduce support burden"
+        ]
+    }
+
+    # Build topline based on themes
+    theme_names = [t.get("name", "Unknown") for t in themes]
+    theme_count = len(themes)
+
+    # Create contextual topline
+    if "Price Sensitivity" in str(theme_names):
+        topline = f"Research reveals {theme_count} critical themes shaping consumer behavior in the Indonesian market, with price sensitivity emerging as the dominant factor. Consumers demonstrate sophisticated value assessment, balancing quality expectations with budget constraints. The findings indicate strong opportunities for brands that can effectively communicate value propositions while maintaining competitive pricing strategies."
+    elif "User Experience" in str(theme_names):
+        topline = f"Analysis identifies {theme_count} key themes, with user experience as the primary driver of satisfaction and loyalty. Respondents consistently emphasize the importance of intuitive, seamless interactions across all touchpoints. The research suggests significant competitive advantages for brands that prioritize user-centric design and continuous experience optimization."
+    else:
+        topline = f"The research uncovers {theme_count} interconnected themes that collectively shape consumer perceptions and behaviors in this market. Respondents demonstrate evolving expectations influenced by both local cultural factors and global trends. These insights provide clear direction for strategic initiatives that can drive market share growth and brand loyalty."
+
+    # Select implications based on identified themes
+    implications = []
+    for theme in themes[:3]:  # Take top 3 themes
+        theme_name = theme.get("name", "")
+        # Find matching implications
+        for key in implications_by_theme:
+            if key.lower() in theme_name.lower():
+                implications.extend(implications_by_theme[key][:1])  # Take 1 implication per theme
+                break
+
+    # Ensure we have at least 3 implications
+    if len(implications) < 3:
+        default_implications = [
+            "Conduct follow-up quantitative research to validate findings at scale",
+            "Develop targeted strategies for each identified consumer segment",
+            "Create implementation roadmap with clear KPIs and success metrics"
+        ]
+        implications.extend(default_implications[:3-len(implications)])
+
+    result = {
+        "topline": topline,
+        "implications": implications[:3]  # Ensure exactly 3 implications
+    }
+
+    # Mock token usage
+    input_tokens = len(transcript) // 4 + sum(len(str(t)) for t in themes) // 4
+    output_tokens = len(topline) // 4 + sum(len(i) for i in implications) // 4
+
+    return result, (input_tokens, output_tokens)

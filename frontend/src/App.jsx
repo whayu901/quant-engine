@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
-import { useAuth, AuthProvider } from './contexts/AuthContext'
+import { useAuth } from './auth'
 import Layout from './components/Layout'
+import AppLayout from './components/AppLayout'
 import Login from './pages/Login'
 import Projects from './pages/Projects'
 import Project from './pages/Project'
@@ -15,16 +16,20 @@ import QualDashboard from './pages/QualDashboard'
 import QuantDashboard from './pages/QuantDashboard'
 
 // Client Dashboard
-import ClientDashboard from './pages/ClientDashboard'
+import ClientDashboard from './pages/client-dashboard'
 
 // Analysis Tools
-import OpenEndsCoding from './pages/OpenEndsCoding'
+import { OpenEndsCoding } from './pages/open-ends-coding'
 import ConceptTesting from './pages/ConceptTesting'
 
-function Private({ children, allowedRoles = [] }) {
-  const { user, loading } = useAuth()
+// Media Management (Phase 5)
+import ClipsManager from './pages/ClipsManager'
+import { ReelsManager } from './pages/reels-manager'
 
-  if (loading) {
+function Private({ children, allowedRoles = [] }) {
+  const { user, ready } = useAuth()
+
+  if (!ready) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-blue-500"></div>
@@ -53,43 +58,73 @@ function AppContent() {
       {/* Admin Routes */}
       <Route path="/admin/dashboard" element={
         <Private allowedRoles={['super_admin', 'org_admin', 'admin']}>
-          <AdminDashboard />
+          <AppLayout>
+            <AdminDashboard />
+          </AppLayout>
         </Private>
       } />
       <Route path="/admin/users" element={
         <Private allowedRoles={['super_admin', 'org_admin', 'admin']}>
-          <UserManagement />
+          <AppLayout>
+            <UserManagement />
+          </AppLayout>
         </Private>
       } />
 
       {/* Team Dashboards */}
       <Route path="/qual/dashboard" element={
         <Private allowedRoles={['researcher', 'team_lead', 'super_admin', 'org_admin']}>
-          <QualDashboard />
+          <AppLayout>
+            <QualDashboard />
+          </AppLayout>
         </Private>
       } />
       <Route path="/quant/dashboard" element={
         <Private allowedRoles={['analyst', 'team_lead', 'super_admin', 'org_admin']}>
-          <QuantDashboard />
+          <AppLayout>
+            <QuantDashboard />
+          </AppLayout>
         </Private>
       } />
 
       {/* Client Dashboard */}
       <Route path="/client/dashboard" element={
         <Private allowedRoles={['client', 'super_admin', 'org_admin']}>
-          <ClientDashboard />
+          <AppLayout>
+            <ClientDashboard />
+          </AppLayout>
         </Private>
       } />
 
-      {/* Analysis Tools */}
+      {/* Phase 3 - Analysis Tools */}
       <Route path="/open-ends" element={
-        <Private>
-          <OpenEndsCoding />
+        <Private allowedRoles={['researcher', 'analyst', 'team_lead', 'super_admin', 'org_admin']}>
+          <AppLayout>
+            <OpenEndsCoding />
+          </AppLayout>
         </Private>
       } />
       <Route path="/concepts" element={
-        <Private>
-          <ConceptTesting />
+        <Private allowedRoles={['researcher', 'analyst', 'team_lead', 'super_admin', 'org_admin']}>
+          <AppLayout>
+            <ConceptTesting />
+          </AppLayout>
+        </Private>
+      } />
+
+      {/* Phase 5 - Media Management */}
+      <Route path="/clips" element={
+        <Private allowedRoles={['researcher', 'team_lead', 'super_admin', 'org_admin']}>
+          <AppLayout>
+            <ClipsManager />
+          </AppLayout>
+        </Private>
+      } />
+      <Route path="/reels" element={
+        <Private allowedRoles={['researcher', 'team_lead', 'super_admin', 'org_admin']}>
+          <AppLayout>
+            <ReelsManager />
+          </AppLayout>
         </Private>
       } />
 
@@ -104,14 +139,18 @@ function AppContent() {
       {/* Research Routes */}
       <Route path="/research/projects" element={
         <Private allowedRoles={['researcher', 'team_lead', 'super_admin', 'org_admin']}>
-          <Projects />
+          <AppLayout>
+            <Projects />
+          </AppLayout>
         </Private>
       } />
 
       {/* Team Lead Dashboard */}
       <Route path="/team/dashboard" element={
         <Private allowedRoles={['team_lead', 'super_admin', 'org_admin']}>
-          <QualDashboard />
+          <AppLayout>
+            <QualDashboard />
+          </AppLayout>
         </Private>
       } />
     </Routes>
@@ -119,9 +158,5 @@ function AppContent() {
 }
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <AppContent />
-    </AuthProvider>
-  )
+  return <AppContent />
 }

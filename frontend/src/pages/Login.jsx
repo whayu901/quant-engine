@@ -15,9 +15,36 @@ export default function Login() {
   async function submit() {
     setErr(''); setBusy(true)
     try {
-      if (mode === 'login') await login(email, password)
-      else await register(email, password, org)
-      nav('/')
+      if (mode === 'login') {
+        const userData = await login(email, password)
+        console.log('Login successful, user data:', userData)
+
+        // Navigate based on role
+        switch(userData.role) {
+          case 'super_admin':
+          case 'org_admin':
+          case 'admin':
+            nav('/admin/dashboard')
+            break
+          case 'team_lead':
+            nav('/team/dashboard')
+            break
+          case 'researcher':
+            nav('/research/projects')
+            break
+          case 'analyst':
+            nav('/quant/dashboard')
+            break
+          case 'client':
+            nav('/client/dashboard')
+            break
+          default:
+            nav('/projects')
+        }
+      } else {
+        await register(email, password, org)
+        nav('/')
+      }
     } catch (e) { setErr(e.message) } finally { setBusy(false) }
   }
 

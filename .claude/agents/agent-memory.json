@@ -1,0 +1,435 @@
+{
+  "project_metadata": {
+    "name": "qual-engine",
+    "version": "0.1.0",
+    "phase": 5,
+    "last_updated": "2024-06-24",
+    "tech_stack": {
+      "backend": ["FastAPI", "SQLAlchemy", "PostgreSQL", "Celery", "Redis"],
+      "frontend": ["React", "Vite", "React Router", "Recharts", "TailwindCSS"],
+      "infrastructure": ["Docker", "Nginx", "Alembic"]
+    }
+  },
+
+  "agent_states": {
+    "python-pro": {
+      "title": "Chief Python Officer",
+      "seniority": "20+ years experience",
+      "expertise_areas": ["async/await", "type hints", "performance", "testing"],
+      "recent_tasks": [
+        "Identified N+1 query patterns",
+        "Suggested asyncio optimizations",
+        "Found SHA256 password security issue"
+      ],
+      "code_patterns": {
+        "preferred": ["context managers", "generators", "dataclasses", "type hints"],
+        "avoid": ["global variables", "mutable defaults", "broad exceptions"]
+      },
+      "project_specifics": {
+        "python_version": "3.12",
+        "async_framework": "asyncio",
+        "known_issues": ["N+1 queries", "synchronous AI calls", "weak password hashing"]
+      }
+    },
+
+    "fastapi-developer": {
+      "expertise_areas": ["dependency injection", "middleware", "background tasks", "WebSockets"],
+      "recent_tasks": [
+        "Analyzed router organization",
+        "Found unregistered routers",
+        "Identified missing pagination"
+      ],
+      "api_patterns": {
+        "authentication": "JWT with Bearer token",
+        "validation": "Pydantic models",
+        "error_handling": "HTTPException",
+        "database": "SQLAlchemy ORM"
+      },
+      "project_specifics": {
+        "routers_count": 12,
+        "endpoints_count": 47,
+        "middleware": ["CORS", "Authentication"],
+        "missing_features": ["rate limiting", "pagination", "caching"]
+      }
+    },
+
+    "react-specialist": {
+      "expertise_areas": ["React 18", "hooks", "performance", "testing"],
+      "recent_tasks": [
+        "Analyzed component reusability",
+        "Found React Query not being used",
+        "Identified missing virtual scrolling"
+      ],
+      "component_patterns": {
+        "state_management": "Context API + useState",
+        "routing": "React Router v6",
+        "data_fetching": "Manual fetch (should use React Query)",
+        "styling": "Mixed (TailwindCSS + styled-jsx)"
+      },
+      "project_specifics": {
+        "components_count": 13,
+        "test_coverage": "0%",
+        "virtualized_components": ["OpenEndsCoding", "QualDashboard"],
+        "performance_issues": ["UserManagement needs virtualization", "No memoization in AdminDashboard"]
+      }
+    },
+
+    "security-auditor": {
+      "expertise_areas": ["OWASP", "authentication", "authorization", "cryptography"],
+      "recent_findings": [
+        "SHA256 password hashing without salt",
+        "Plaintext passwords in share links",
+        "No rate limiting on API endpoints",
+        "Missing input validation"
+      ],
+      "vulnerabilities": {
+        "critical": ["Weak password hashing"],
+        "high": ["No rate limiting", "Default passwords"],
+        "medium": ["Missing HTTPS enforcement", "No CSRF protection"],
+        "low": ["Verbose error messages"]
+      },
+      "recommendations": [
+        "Replace SHA256 with bcrypt/argon2",
+        "Implement rate limiting middleware",
+        "Add input sanitization",
+        "Enable security headers"
+      ]
+    },
+
+    "test-automator": {
+      "expertise_areas": ["pytest", "jest", "playwright", "coverage"],
+      "test_strategy": {
+        "backend": {
+          "framework": "pytest",
+          "coverage_target": "80%",
+          "priority_areas": ["authentication", "authorization", "data validation"]
+        },
+        "frontend": {
+          "framework": "jest + React Testing Library",
+          "coverage_target": "70%",
+          "priority_areas": ["user flows", "form validation", "error handling"]
+        },
+        "e2e": {
+          "framework": "Playwright",
+          "critical_paths": ["login", "project creation", "analysis workflow"]
+        }
+      },
+      "current_coverage": {
+        "backend": "0%",
+        "frontend": "0%",
+        "e2e": "0%"
+      }
+    },
+
+    "qa-expert": {
+      "expertise_areas": ["test planning", "quality metrics", "bug tracking", "regression testing"],
+      "quality_assessment": {
+        "test_coverage": "0%",
+        "code_quality": "B-",
+        "documentation": "C",
+        "error_handling": "C+",
+        "performance": "B"
+      },
+      "testing_priorities": [
+        "Authentication flow (CRITICAL)",
+        "API endpoint testing (HIGH)",
+        "Component unit tests (HIGH)",
+        "Data validation (MEDIUM)",
+        "Performance testing (MEDIUM)"
+      ],
+      "missing_processes": [
+        "CI/CD pipeline",
+        "Automated testing",
+        "Code review process",
+        "Bug tracking system",
+        "Performance monitoring"
+      ]
+    },
+
+    "sql-pro": {
+      "expertise_areas": ["PostgreSQL", "query optimization", "indexes", "migrations"],
+      "recent_tasks": [
+        "Identified missing indexes",
+        "Found N+1 query problems",
+        "Suggested aggregation optimizations"
+      ],
+      "database_patterns": {
+        "orm": "SQLAlchemy 2.0",
+        "migrations": "Alembic",
+        "connection_pool": "Default SQLAlchemy",
+        "transaction_handling": "Session per request"
+      },
+      "project_specifics": {
+        "tables_count": 35,
+        "missing_indexes": [
+          "transcripts(project_id, created_at)",
+          "clips(project_id, status)",
+          "evidence(project_id)"
+        ],
+        "n_plus_one_queries": [
+          "admin.py:207-223",
+          "admin.py:365-388",
+          "admin.py:607-611"
+        ],
+        "optimization_opportunities": [
+          "Use joinedload for relationships",
+          "Add composite indexes",
+          "Implement query result caching"
+        ]
+      }
+    },
+
+    "backend-developer": {
+      "recent_tasks": [
+        "Reviewed authentication patterns",
+        "Analyzed API structure",
+        "Found blocking AI operations"
+      ],
+      "architecture_decisions": [
+        "RESTful API design",
+        "JWT authentication",
+        "Multi-tenant via org_id",
+        "Phased feature rollout"
+      ]
+    },
+
+    "frontend-developer": {
+      "recent_tasks": [
+        "Identified component duplication",
+        "Found missing test infrastructure",
+        "Analyzed state management"
+      ],
+      "improvement_areas": [
+        "Extract reusable components",
+        "Implement React Query",
+        "Add test coverage",
+        "Standardize styling approach"
+      ]
+    },
+
+    "api-designer": {
+      "recent_tasks": [
+        "Reviewed endpoint consistency",
+        "Found versioning issues",
+        "Suggested URL standardization"
+      ],
+      "api_standards": {
+        "versioning": "/api/v1/",
+        "authentication": "Bearer token",
+        "pagination": "skip/limit pattern",
+        "error_format": "JSON with detail field"
+      }
+    },
+
+    "qual-engine-specialist": {
+      "project_overview": {
+        "purpose": "Qualitative and quantitative research analysis platform",
+        "target_market": "Southeast Asia",
+        "key_features": ["transcript analysis", "AI coding", "media clips", "dashboards"],
+        "phases_completed": [0, 1, 2, 3, 4, 5],
+        "competitor": "CoLoop.ai",
+        "competitive_advantages": ["SEA focus", "local languages", "better performance", "lower cost"]
+      },
+      "architectural_principles": [
+        "Scalability first",
+        "Multi-tenant architecture",
+        "Role-based access control",
+        "Phased feature deployment"
+      ]
+    },
+
+    "ai-engineer": {
+      "expertise_areas": ["LLMs", "NLP", "Computer Vision", "Audio Processing"],
+      "recent_tasks": [
+        "Mock Claude API implementation",
+        "Mock embeddings service",
+        "RAG architecture design"
+      ],
+      "tech_stack": {
+        "llms": ["Claude", "GPT-4", "Llama"],
+        "frameworks": ["LangChain", "Transformers"],
+        "embeddings": ["OpenAI", "Sentence-BERT"],
+        "audio": ["Whisper", "Deepgram", "AssemblyAI"]
+      },
+      "project_specifics": {
+        "challenges": ["SEA languages", "code-mixing", "real-time processing"],
+        "current_implementations": ["mock_claude.py", "mock_embeddings.py"],
+        "next_priorities": ["Fine-tune for SEA", "Streaming transcription"]
+      }
+    },
+
+    "data-scientist": {
+      "expertise_areas": ["Statistical Analysis", "ML Models", "Predictive Analytics"],
+      "recent_tasks": [
+        "Theme extraction algorithms",
+        "Sentiment analysis design",
+        "Clustering for open-ends"
+      ],
+      "analysis_patterns": {
+        "qual": "Theme extraction, evidence mapping",
+        "quant": "Statistical significance, correlations",
+        "mixed": "Triangulation, cross-validation"
+      },
+      "project_specifics": {
+        "models_needed": ["Topic modeling", "Sentiment analysis", "Entity recognition"],
+        "accuracy_targets": {"transcription": "95%", "theme_extraction": "85%", "sentiment": "90%"}
+      }
+    },
+
+    "data-analyst": {
+      "expertise_areas": ["Data Visualization", "Reporting", "KPIs"],
+      "recent_tasks": [
+        "Dashboard designs",
+        "Chart optimizations",
+        "Report templates"
+      ],
+      "visualization_stack": {
+        "frontend": ["Recharts", "D3.js", "Chart.js"],
+        "backend": ["Aggregation APIs", "Materialized views"],
+        "reports": ["PDF generation", "Excel export"]
+      },
+      "project_specifics": {
+        "dashboards": ["Admin", "Client", "Qual", "Quant"],
+        "data_volumes": {"transcripts": "10K+", "surveys": "50K+", "open_ends": "100K+"},
+        "performance_targets": {"load_time": "<2s", "interaction": "<100ms"}
+      }
+    },
+
+    "data-engineer": {
+      "expertise_areas": ["ETL/ELT", "Streaming", "Data Lakes", "Pipelines"],
+      "recent_tasks": [
+        "Ingestion pipeline design",
+        "Async processing with Celery",
+        "S3/MinIO integration"
+      ],
+      "infrastructure": {
+        "pipelines": ["Airflow", "Celery"],
+        "storage": ["PostgreSQL", "S3", "Redis"],
+        "streaming": ["Redis Streams", "Kafka"],
+        "processing": ["Batch", "Real-time"]
+      },
+      "project_specifics": {
+        "data_sources": ["Audio files", "Video files", "Documents", "APIs"],
+        "processing_requirements": ["Real-time transcription", "Batch analysis", "Stream processing"],
+        "scale_targets": {"concurrent_jobs": "100+", "throughput": "1GB/min"}
+      }
+    },
+
+    "postgres-pro": {
+      "expertise_areas": ["PostgreSQL", "Query Optimization", "Indexing", "Extensions"],
+      "recent_tasks": [
+        "pgvector setup for embeddings",
+        "Index strategy design",
+        "Partitioning recommendations"
+      ],
+      "database_config": {
+        "version": "15",
+        "extensions": ["pgvector", "pg_trgm", "uuid-ossp"],
+        "indexes": ["B-tree", "GiST", "GIN"],
+        "partitioning": "By org_id and date"
+      },
+      "project_specifics": {
+        "tables": 35,
+        "expected_records": "100M+",
+        "performance_issues": ["N+1 queries", "Missing indexes", "No connection pooling"],
+        "optimization_opportunities": ["Materialized views", "Query caching", "Read replicas"]
+      }
+    },
+
+    "database-optimizer": {
+      "expertise_areas": ["Query Plans", "Caching", "Connection Pooling", "Monitoring"],
+      "recent_tasks": [
+        "Slow query analysis",
+        "Cache strategy design",
+        "Connection pool configuration"
+      ],
+      "optimization_tools": {
+        "monitoring": ["pg_stat_statements", "pgBadger", "Grafana"],
+        "caching": ["Redis", "Query result cache"],
+        "pooling": ["PgBouncer", "pgpool"]
+      },
+      "project_specifics": {
+        "current_bottlenecks": ["Admin endpoint queries", "Dashboard aggregations", "Search queries"],
+        "target_metrics": {"p95_latency": "<100ms", "concurrent_connections": "1000+", "cache_hit_rate": ">80%"}
+      }
+    }
+  },
+
+  "shared_knowledge": {
+    "recent_decisions": [
+      "Use React Query for frontend data management",
+      "Implement virtual scrolling for large datasets",
+      "Add background task processing for AI operations",
+      "Standardize API paths under /api/v1/"
+    ],
+
+    "technical_debt": [
+      {
+        "issue": "Zero test coverage",
+        "priority": "critical",
+        "assigned_to": ["react-specialist", "python-pro"]
+      },
+      {
+        "issue": "N+1 queries in admin endpoints",
+        "priority": "high",
+        "assigned_to": ["sql-pro", "fastapi-developer"]
+      },
+      {
+        "issue": "React Query not utilized",
+        "priority": "high",
+        "assigned_to": ["react-specialist"]
+      },
+      {
+        "issue": "Missing API pagination",
+        "priority": "medium",
+        "assigned_to": ["fastapi-developer", "api-designer"]
+      }
+    ],
+
+    "performance_benchmarks": {
+      "api_response_time": {
+        "current": "200-3000ms",
+        "target": "<100ms",
+        "bottlenecks": ["N+1 queries", "synchronous AI calls", "no caching"]
+      },
+      "frontend_metrics": {
+        "bundle_size": "~2MB",
+        "first_contentful_paint": "2.5s",
+        "time_to_interactive": "4.2s"
+      },
+      "database_metrics": {
+        "slow_queries": 15,
+        "missing_indexes": 8,
+        "connection_pool_size": 10
+      }
+    }
+  },
+
+  "coordination_rules": {
+    "task_assignment": {
+      "database_optimization": ["sql-pro", "python-pro"],
+      "api_development": ["fastapi-developer", "api-designer"],
+      "frontend_features": ["react-specialist", "frontend-developer"],
+      "architecture_decisions": ["qual-engine-specialist", "backend-developer"]
+    },
+
+    "conflict_resolution": {
+      "priority_order": [
+        "qual-engine-specialist",
+        "api-designer",
+        "sql-pro",
+        "fastapi-developer",
+        "react-specialist",
+        "python-pro",
+        "backend-developer",
+        "frontend-developer"
+      ]
+    },
+
+    "communication_channels": {
+      "memory_sync": "agent-memory.json",
+      "task_queue": "task-queue.json",
+      "decision_log": "decisions.md"
+    }
+  }
+}

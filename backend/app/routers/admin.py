@@ -241,7 +241,9 @@ async def create_user(
         raise HTTPException(status_code=400, detail="Email already registered")
 
     from ..models import _uid
-    import hashlib
+    import secrets
+    import string
+    from app.security import hash_pw
 
     # Create user
     user = User(
@@ -250,7 +252,8 @@ async def create_user(
         name=request.name,
         org_id=current_user.org_id,
         role=request.role,
-        hashed_password=hashlib.sha256(b"changeme123").hexdigest()  # Default password
+        # Generate secure random password
+        hashed_password=hash_pw(''.join(secrets.choice(string.ascii_letters + string.digits + string.punctuation) for _ in range(16)))  # Secure random password
     )
     db.add(user)
 

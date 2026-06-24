@@ -27,15 +27,27 @@ class RAGService:
         self.db = db
         self.vector_service = VectorStoreService(db)
         self.embedding_service = EmbeddingService()
-        self.use_mock = not bool(settings.anthropic_api_key)
+
+        # Check if Anthropic API key is configured
+        has_anthropic = hasattr(settings, 'anthropic_api_key') and settings.anthropic_api_key
+        self.use_mock = not has_anthropic
 
         if not self.use_mock:
             try:
                 from anthropic import Anthropic
                 self.client = Anthropic(api_key=settings.anthropic_api_key)
-            except:
-                print("⚠️ Anthropic not configured. Using mock RAG responses.")
+                # Test the API key with a simple request
+                test_response = self.client.messages.create(
+                    model="claude-3-haiku-20240307",  # Use cheaper model for testing
+                    max_tokens=10,
+                    messages=[{"role": "user", "content": "test"}]
+                )
+                print("✅ Anthropic API configured successfully")
+            except Exception as e:
+                print(f"⚠️ Anthropic not configured: {e}. Using mock RAG responses.")
                 self.use_mock = True
+        else:
+            print("ℹ️ Using mock RAG responses (no Anthropic API key configured)")
 
     async def create_chat_session(
         self,
@@ -92,11 +104,21 @@ class RAGService:
         session_id: str,
         message: str,
         use_rag: bool = True,
-        top_k: int = 5
+        top_k: int = 5,
+        cross_project: bool = False,
+        project_ids: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Process a chat message with RAG
         Returns response with retrieved context
+
+        Args:
+            session_id: Chat session ID
+            message: User message
+            use_rag: Whether to use RAG for context
+            top_k: Number of relevant documents to retrieve
+            cross_project: Enable cross-project search
+            project_ids: Specific project IDs to search (if cross_project is True)
         """
         start_time = time.time()
 
@@ -119,12 +141,43 @@ class RAGService:
         # Retrieve relevant context if RAG is enabled
         retrieved_context = []
         if use_rag:
-            search_results = await self.vector_service.semantic_search(
-                query=message,
-                project_id=session.project_id,
-                top_k=top_k,
-                threshold=0.5
-            )
+            if cross_project:
+                # Cross-project search
+                accessible_projects = self.db.query(Project).filter_by(
+                    org_id=session.org_id
+                )
+
+                if project_ids:
+                    accessible_projects = accessible_projects.filter(Project.id.in_(project_ids))
+
+                all_results = []
+                for project in accessible_projects.all():
+                    try:
+                        search_results = await self.vector_service.semantic_search(
+                            query=message,
+                            project_id=project.id,
+                            top_k=top_k,
+                            threshold=0.5
+                        )
+                        # Add project context to results
+                        for r in search_results:
+                            r['project_name'] = project.name
+                            r['project_id'] = project.id
+                        all_results.extend(search_results)
+                    except Exception as e:
+                        print(f"Error searching project {project.id}: {e}")
+
+                # Sort by similarity and take top_k
+                all_results.sort(key=lambda x: x.get('similarity', 0), reverse=True)
+                search_results = all_results[:top_k]
+            else:
+                # Single project search
+                search_results = await self.vector_service.semantic_search(
+                    query=message,
+                    project_id=session.project_id,
+                    top_k=top_k,
+                    threshold=0.5
+                )
 
             retrieved_context = search_results
             user_msg.retrieved_chunks = [r['id'] for r in search_results]
