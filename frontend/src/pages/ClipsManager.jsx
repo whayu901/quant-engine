@@ -1,14 +1,25 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { Play, Pause, Download, Share2, Edit, Trash2, Plus, Film, Clock, Tag } from 'lucide-react';
-import api from '../api';
+import React, { useState, useEffect, useCallback } from "react";
+import { useParams, useNavigate } from "react-router-dom";
+import {
+  Play,
+  Pause,
+  Download,
+  Share2,
+  Edit,
+  Trash2,
+  Plus,
+  Film,
+  Clock,
+  Tag,
+} from "lucide-react";
+import { api } from "../api";
 
 export default function ClipsManager() {
   const { projectId } = useParams();
   const navigate = useNavigate();
   const [clips, setClips] = useState([]);
   const [transcripts, setTranscripts] = useState([]);
-  const [selectedTranscript, setSelectedTranscript] = useState('');
+  const [selectedTranscript, setSelectedTranscript] = useState("");
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [selectedClip, setSelectedClip] = useState(null);
@@ -17,12 +28,12 @@ export default function ClipsManager() {
 
   // New clip form state
   const [newClip, setNewClip] = useState({
-    name: '',
-    description: '',
-    transcript_id: '',
+    name: "",
+    description: "",
+    transcript_id: "",
     start_time: 0,
     end_time: 10,
-    tags: []
+    tags: [],
   });
 
   useEffect(() => {
@@ -36,7 +47,7 @@ export default function ClipsManager() {
       const response = await api.get(`/projects/${projectId}/clips`);
       setClips(response.data);
     } catch (error) {
-      console.error('Error loading clips:', error);
+      console.error("Error loading clips:", error);
     } finally {
       setLoading(false);
     }
@@ -47,7 +58,7 @@ export default function ClipsManager() {
       const response = await api.get(`/projects/${projectId}/transcripts`);
       setTranscripts(response.data);
     } catch (error) {
-      console.error('Error loading transcripts:', error);
+      console.error("Error loading transcripts:", error);
     }
   };
 
@@ -58,30 +69,36 @@ export default function ClipsManager() {
       await loadClips();
       // Reset form
       setNewClip({
-        name: '',
-        description: '',
-        transcript_id: '',
+        name: "",
+        description: "",
+        transcript_id: "",
         start_time: 0,
         end_time: 10,
-        tags: []
+        tags: [],
       });
     } catch (error) {
-      console.error('Error creating clip:', error);
-      alert('Error creating clip: ' + (error.response?.data?.detail || error.message));
+      console.error("Error creating clip:", error);
+      alert(
+        "Error creating clip: " +
+          (error.response?.data?.detail || error.message),
+      );
     } finally {
       setCreating(false);
     }
   };
 
   const handleDeleteClip = async (clipId) => {
-    if (!confirm('Are you sure you want to delete this clip?')) return;
+    if (!confirm("Are you sure you want to delete this clip?")) return;
 
     try {
       await api.delete(`/clips/${clipId}`);
       await loadClips();
     } catch (error) {
-      console.error('Error deleting clip:', error);
-      alert('Error deleting clip: ' + (error.response?.data?.detail || error.message));
+      console.error("Error deleting clip:", error);
+      alert(
+        "Error deleting clip: " +
+          (error.response?.data?.detail || error.message),
+      );
     }
   };
 
@@ -92,51 +109,57 @@ export default function ClipsManager() {
       await api.put(`/clips/${selectedClip.id}`, {
         name: selectedClip.name,
         description: selectedClip.description,
-        tags: selectedClip.tags
+        tags: selectedClip.tags,
       });
       await loadClips();
       setEditModalOpen(false);
       setSelectedClip(null);
     } catch (error) {
-      console.error('Error updating clip:', error);
-      alert('Error updating clip: ' + (error.response?.data?.detail || error.message));
+      console.error("Error updating clip:", error);
+      alert(
+        "Error updating clip: " +
+          (error.response?.data?.detail || error.message),
+      );
     }
   };
 
   const handleShare = async (clip) => {
     try {
-      const response = await api.post('/share', {
-        target_type: 'clip',
+      const response = await api.post("/share", {
+        target_type: "clip",
         target_id: clip.id,
         title: clip.name,
         description: clip.description,
-        allow_download: true
+        allow_download: true,
       });
 
       setSelectedClip({ ...clip, shareUrl: response.data.url });
       setShareModalOpen(true);
     } catch (error) {
-      console.error('Error creating share link:', error);
-      alert('Error creating share link: ' + (error.response?.data?.detail || error.message));
+      console.error("Error creating share link:", error);
+      alert(
+        "Error creating share link: " +
+          (error.response?.data?.detail || error.message),
+      );
     }
   };
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'ready':
-        return 'var(--color-accent)';
-      case 'processing':
-        return 'var(--color-amber)';
-      case 'failed':
-        return '#dc3545';
+      case "ready":
+        return "var(--color-accent)";
+      case "processing":
+        return "var(--color-amber)";
+      case "failed":
+        return "#dc3545";
       default:
-        return 'var(--color-muted)';
+        return "var(--color-muted)";
     }
   };
 
@@ -154,18 +177,20 @@ export default function ClipsManager() {
       </div>
 
       {/* Create Clip Form */}
-      <div className="card" style={{ marginBottom: '2rem' }}>
+      <div className="card" style={{ marginBottom: "2rem" }}>
         <h2>Create New Clip</h2>
         <div className="form-grid">
           <div className="form-group">
             <label>Transcript</label>
             <select
               value={newClip.transcript_id}
-              onChange={(e) => setNewClip({ ...newClip, transcript_id: e.target.value })}
+              onChange={(e) =>
+                setNewClip({ ...newClip, transcript_id: e.target.value })
+              }
               required
             >
               <option value="">Select transcript...</option>
-              {transcripts.map(t => (
+              {transcripts.map((t) => (
                 <option key={t.id} value={t.id}>
                   {t.title || `Transcript ${t.id.slice(0, 8)}`}
                 </option>
@@ -189,7 +214,12 @@ export default function ClipsManager() {
             <input
               type="number"
               value={newClip.start_time}
-              onChange={(e) => setNewClip({ ...newClip, start_time: parseFloat(e.target.value) })}
+              onChange={(e) =>
+                setNewClip({
+                  ...newClip,
+                  start_time: parseFloat(e.target.value),
+                })
+              }
               min="0"
               step="0.1"
             />
@@ -200,31 +230,40 @@ export default function ClipsManager() {
             <input
               type="number"
               value={newClip.end_time}
-              onChange={(e) => setNewClip({ ...newClip, end_time: parseFloat(e.target.value) })}
+              onChange={(e) =>
+                setNewClip({ ...newClip, end_time: parseFloat(e.target.value) })
+              }
               min="0"
               step="0.1"
             />
           </div>
 
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
             <label>Description</label>
             <textarea
               value={newClip.description}
-              onChange={(e) => setNewClip({ ...newClip, description: e.target.value })}
+              onChange={(e) =>
+                setNewClip({ ...newClip, description: e.target.value })
+              }
               placeholder="Optional description..."
               rows="3"
             />
           </div>
 
-          <div className="form-group" style={{ gridColumn: '1 / -1' }}>
+          <div className="form-group" style={{ gridColumn: "1 / -1" }}>
             <label>Tags (comma-separated)</label>
             <input
               type="text"
-              value={newClip.tags.join(', ')}
-              onChange={(e) => setNewClip({
-                ...newClip,
-                tags: e.target.value.split(',').map(t => t.trim()).filter(t => t)
-              })}
+              value={newClip.tags.join(", ")}
+              onChange={(e) =>
+                setNewClip({
+                  ...newClip,
+                  tags: e.target.value
+                    .split(",")
+                    .map((t) => t.trim())
+                    .filter((t) => t),
+                })
+              }
               placeholder="e.g., highlight, evidence, key-moment"
             />
           </div>
@@ -236,7 +275,7 @@ export default function ClipsManager() {
           disabled={creating || !newClip.name || !newClip.transcript_id}
         >
           <Plus size={20} />
-          {creating ? 'Creating...' : 'Create Clip'}
+          {creating ? "Creating..." : "Create Clip"}
         </button>
       </div>
 
@@ -248,10 +287,12 @@ export default function ClipsManager() {
           <div className="empty-state">
             <Film size={48} />
             <p>No clips created yet</p>
-            <p className="muted">Create clips from your transcripts to build highlight reels</p>
+            <p className="muted">
+              Create clips from your transcripts to build highlight reels
+            </p>
           </div>
         ) : (
-          clips.map(clip => (
+          clips.map((clip) => (
             <div key={clip.id} className="clip-card card">
               <div className="clip-header">
                 <h3>{clip.name}</h3>
@@ -280,7 +321,7 @@ export default function ClipsManager() {
               </div>
 
               <div className="clip-actions">
-                {clip.status === 'ready' && (
+                {clip.status === "ready" && (
                   <>
                     <button className="button button-sm" title="Play">
                       <Play size={16} />
@@ -340,15 +381,22 @@ export default function ClipsManager() {
                 <input
                   type="text"
                   value={selectedClip.name}
-                  onChange={(e) => setSelectedClip({ ...selectedClip, name: e.target.value })}
+                  onChange={(e) =>
+                    setSelectedClip({ ...selectedClip, name: e.target.value })
+                  }
                 />
               </div>
 
               <div className="form-group">
                 <label>Description</label>
                 <textarea
-                  value={selectedClip.description || ''}
-                  onChange={(e) => setSelectedClip({ ...selectedClip, description: e.target.value })}
+                  value={selectedClip.description || ""}
+                  onChange={(e) =>
+                    setSelectedClip({
+                      ...selectedClip,
+                      description: e.target.value,
+                    })
+                  }
                   rows="3"
                 />
               </div>
@@ -357,11 +405,16 @@ export default function ClipsManager() {
                 <label>Tags</label>
                 <input
                   type="text"
-                  value={selectedClip.tags.join(', ')}
-                  onChange={(e) => setSelectedClip({
-                    ...selectedClip,
-                    tags: e.target.value.split(',').map(t => t.trim()).filter(t => t)
-                  })}
+                  value={selectedClip.tags.join(", ")}
+                  onChange={(e) =>
+                    setSelectedClip({
+                      ...selectedClip,
+                      tags: e.target.value
+                        .split(",")
+                        .map((t) => t.trim())
+                        .filter((t) => t),
+                    })
+                  }
                 />
               </div>
             </div>
@@ -386,7 +439,10 @@ export default function ClipsManager() {
 
       {/* Share Modal */}
       {shareModalOpen && selectedClip?.shareUrl && (
-        <div className="modal-backdrop" onClick={() => setShareModalOpen(false)}>
+        <div
+          className="modal-backdrop"
+          onClick={() => setShareModalOpen(false)}
+        >
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>Share Clip</h2>
@@ -411,7 +467,7 @@ export default function ClipsManager() {
                   className="button button-primary"
                   onClick={() => {
                     navigator.clipboard.writeText(selectedClip.shareUrl);
-                    alert('Link copied to clipboard!');
+                    alert("Link copied to clipboard!");
                   }}
                 >
                   Copy Link
