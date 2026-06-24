@@ -431,3 +431,64 @@ class OrganizationStats(Base):
     __table_args__ = (
         Index('idx_org_stats', 'org_id', 'calculated_at'),
     )
+
+
+# Collaboration Models (for Phase 3 Real-time features)
+class ProjectActivity(Base):
+    """Track all project activities for audit trail"""
+    __tablename__ = "project_activities"
+
+    id = Column(String(36), primary_key=True, default=_uid)
+    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+
+    action = Column(String(50), nullable=False)  # created, updated, deleted, viewed, analyzed
+    entity_type = Column(String(50), nullable=False)  # transcript, analysis, grid, theme, comment
+    entity_id = Column(String(36))
+    activity_metadata = Column(JSON, default={})
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_project_activity', 'project_id', 'created_at'),
+        Index('idx_activity_user', 'user_id', 'created_at'),
+    )
+
+
+class CollaborationSession(Base):
+    """Track active collaboration sessions"""
+    __tablename__ = "collaboration_sessions"
+
+    id = Column(String(36), primary_key=True, default=_uid)
+    project_id = Column(String(36), ForeignKey("projects.id"), nullable=False)
+    user_id = Column(String(36), ForeignKey("users.id"), nullable=False)
+
+    status = Column(String(20), default="active")  # active, idle, disconnected
+    last_activity = Column(DateTime, default=datetime.utcnow)
+    session_metadata = Column(JSON, default={})  # user_name, cursor_position, etc.
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    ended_at = Column(DateTime)
+
+    __table_args__ = (
+        Index('idx_collab_session', 'project_id', 'status'),
+        Index('idx_collab_user', 'user_id', 'status'),
+    )
+
+
+class CollaborationEvent(Base):
+    """Real-time collaboration events"""
+    __tablename__ = "collaboration_events"
+
+    id = Column(String(36), primary_key=True, default=_uid)
+    session_id = Column(String(36), ForeignKey("collaboration_sessions.id"), nullable=False)
+
+    event_type = Column(String(50), nullable=False)  # cursor_move, selection, typing, comment
+    event_data = Column(JSON, nullable=False)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_collab_event', 'session_id', 'created_at'),
+        Index('idx_event_type', 'event_type', 'created_at'),
+    )

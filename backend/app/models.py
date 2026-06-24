@@ -17,6 +17,9 @@ class Org(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     users = relationship("User", back_populates="org", cascade="all, delete-orphan")
     projects = relationship("Project", back_populates="org", cascade="all, delete-orphan")
+    # Enterprise relationships
+    white_label_config = relationship("WhiteLabelConfig", back_populates="org", uselist=False)
+    usage_quota = relationship("UsageQuota", back_populates="org", uselist=False)
 
 
 class User(Base):

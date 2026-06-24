@@ -1,0 +1,266 @@
+name: CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    name: Build and Push Docker Image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v4
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            BUILD_ENV=production
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: github.ref == 'refs/heads/develop' || github.event.inputs.environment == 'staging'
+    environment:
+      name: staging
+      url: https://staging.qualengine.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name qual-engine-staging --region ap-southeast-1
+
+      - name: Deploy to Kubernetes
+        run: |
+          kubectl set image deployment/backend backend=${{ needs.build-and-push.outputs.image-tag }} -n staging
+          kubectl rollout status deployment/backend -n staging
+
+      - name: Run smoke tests
+        run: |
+          sleep 30
+          curl -f https://staging.qualengine.com/health || exit 1
+
+      - name: Notify Slack
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Staging deployment ${{ job.status }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.environment == 'production'
+    environment:
+      name: production
+      url: https://api.qualengine.com
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: 'latest'
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.PROD_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.PROD_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-southeast-1
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig --name qual-engine-production --region ap-southeast-1
+
+      - name: Create database backup
+        run: |
+          kubectl exec -n production deployment/postgres -- pg_dump -U qualengine qualengine > backup-$(date +%Y%m%d-%H%M%S).sql
+          aws s3 cp backup-*.sql s3://qual-engine-backups/pre-deployment/
+
+      - name: Deploy to Kubernetes (Blue-Green)
+        run: |
+          # Deploy to green environment
+          kubectl set image deployment/backend-green backend=${{ needs.build-and-push.outputs.image-tag }} -n production
+          kubectl rollout status deployment/backend-green -n production
+
+          # Run health checks
+          for i in {1..10}; do
+            if curl -f http://backend-green-service.production.svc.cluster.local:8000/health; then
+              echo "Health check passed"
+              break
+            fi
+            echo "Health check attempt $i failed, retrying..."
+            sleep 10
+          done
+
+          # Switch traffic to green
+          kubectl patch service backend -n production -p '{"spec":{"selector":{"version":"green"}}}'
+
+          # Wait and monitor
+          sleep 60
+
+          # If successful, update blue for next deployment
+          kubectl set image deployment/backend-blue backend=${{ needs.build-and-push.outputs.image-tag }} -n production
+
+      - name: Run production tests
+        run: |
+          npm install -g newman
+          newman run tests/postman/production-tests.json \
+            --environment tests/postman/production-env.json \
+            --reporters cli,json \
+            --reporter-json-export production-test-results.json
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        with:
+          name: production-test-results
+          path: production-test-results.json
+
+      - name: Create release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v1
+        with:
+          body: |
+            ## What's Changed
+            - Docker image: ${{ needs.build-and-push.outputs.image-tag }}
+            - Digest: ${{ needs.build-and-push.outputs.image-digest }}
+
+            See [full changelog](https://github.com/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }})
+          draft: false
+          prerelease: false
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed, initiating rollback..."
+          kubectl patch service backend -n production -p '{"spec":{"selector":{"version":"blue"}}}'
+          kubectl rollout undo deployment/backend-green -n production
+
+      - name: Notify team
+        if: always()
+        uses: 8398a7/action-slack@v3
+        with:
+          status: ${{ job.status }}
+          text: 'Production deployment ${{ job.status }} for version ${{ github.ref }}'
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          fields: repo,message,commit,author,action,eventName,ref,workflow
+
+  post-deployment:
+    name: Post-Deployment Tasks
+    runs-on: ubuntu-latest
+    needs: [deploy-production]
+    if: success()
+    steps:
+      - name: Update status page
+        run: |
+          curl -X POST https://api.statuspage.io/v1/pages/${{ secrets.STATUSPAGE_PAGE_ID }}/incidents \
+            -H "Authorization: OAuth ${{ secrets.STATUSPAGE_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "incident": {
+                "name": "Deployment completed",
+                "status": "resolved",
+                "impact": "none",
+                "body": "Successfully deployed version ${{ github.ref }}"
+              }
+            }'
+
+      - name: Trigger monitoring alerts reset
+        run: |
+          curl -X POST https://api.datadoghq.com/api/v1/monitor/unmute_all \
+            -H "DD-API-KEY: ${{ secrets.DATADOG_API_KEY }}" \
+            -H "DD-APPLICATION-KEY: ${{ secrets.DATADOG_APP_KEY }}"
+
+      - name: Update documentation
+        run: |
+          echo "Triggering documentation build..."
+          curl -X POST https://api.github.com/repos/${{ github.repository }}-docs/dispatches \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            -d '{"event_type": "deploy-docs", "client_payload": {"version": "${{ github.ref }}"}}'
+
+      - name: Cache warmup
+        run: |
+          endpoints=(
+            "/api/v1/health"
+            "/api/v1/projects"
+            "/api/v1/auth/login"
+            "/docs"
+            "/redoc"
+          )
+
+          for endpoint in "${endpoints[@]}"; do
+            curl -s -o /dev/null -w "%{http_code}" https://api.qualengine.com${endpoint}
+            echo "Warmed up: ${endpoint}"
+          done

@@ -3,108 +3,220 @@ Phase 2: Analysis API endpoints
 """
 
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from sqlalchemy import func
+from pydantic import BaseModel, Field, validator
 from datetime import datetime
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
-from ..deps import get_db, get_current_user
+from ..deps import get_db, get_current_user, require_role
 from ..models import User, Project
 from ..models_phase2 import (
     AnalysisGrid, GridCell, Evidence, ContentAnalysisReport,
-    AnalysisType, GridType, Theme, Insight
+    AnalysisType, GridType, AnalysisTheme, Insight
 )
 from ..analysis_grid import AnalysisGridService, EvidenceService
 from ..content_analysis import ContentAnalysisService
+from ..validators_phase2 import (
+    validate_grid_name, validate_markets, validate_comparison_dimensions,
+    validate_evidence_content, validate_theme_data, validate_insight_data,
+    validate_report_title, sanitize_cell_content, validate_grid_config,
+    GridCellValidator, ReportExportValidator, validate_search_params,
+    MAX_EXPORT_SIZE
+)
+from ..schemas import PaginatedResponse
 
+# Create rate limiter
+limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(prefix="/api/v1/analysis", tags=["analysis"])
 
 
-# Schemas
+# Schemas with validation
 class CreateGridRequest(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=100)
     grid_type: GridType
     analysis_type: AnalysisType = AnalysisType.BASIC
     config: Optional[dict] = None
 
+    @validator('name')
+    def validate_name(cls, v):
+        valid, error = validate_grid_name(v)
+        if not valid:
+            raise ValueError(error)
+        return v
+
+    @validator('config')
+    def validate_config(cls, v):
+        if v:
+            valid, error = validate_grid_config(v)
+            if not valid:
+                raise ValueError(error)
+        return v
+
 
 class CreateComparativeGridRequest(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=100)
     grid_type: GridType
-    comparison_dimensions: List[str]
+    comparison_dimensions: List[str] = Field(..., min_items=1, max_items=10)
     config: Optional[dict] = None
+
+    @validator('name')
+    def validate_name(cls, v):
+        valid, error = validate_grid_name(v)
+        if not valid:
+            raise ValueError(error)
+        return v
+
+    @validator('comparison_dimensions')
+    def validate_dimensions(cls, v):
+        valid, error = validate_comparison_dimensions(v)
+        if not valid:
+            raise ValueError(error)
+        return v
 
 
 class CreateMultimarketGridRequest(BaseModel):
-    name: str
-    markets: List[str]
+    name: str = Field(..., min_length=1, max_length=100)
+    markets: List[str] = Field(..., min_items=1, max_items=20)
     grid_type: GridType = GridType.THEMES
+
+    @validator('name')
+    def validate_name(cls, v):
+        valid, error = validate_grid_name(v)
+        if not valid:
+            raise ValueError(error)
+        return v
+
+    @validator('markets')
+    def validate_markets_list(cls, v):
+        valid, error = validate_markets(v)
+        if not valid:
+            raise ValueError(error)
+        return v
 
 
 class AddCellRequest(BaseModel):
-    row_id: str
-    column_id: str
-    content: str
-    evidence_ids: Optional[List[str]] = None
+    row_id: str = Field(..., min_length=1)
+    column_id: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=10000)
+    evidence_ids: Optional[List[str]] = Field(None, max_items=100)
     metadata: Optional[dict] = None
+
+    @validator('content')
+    def sanitize_content(cls, v):
+        return sanitize_cell_content(v)
+
+    @validator('*', pre=True)
+    def validate_cell(cls, v, values):
+        if 'row_id' in values and 'column_id' in values and 'content' in values:
+            valid, error = GridCellValidator.validate_cell_data(
+                values['row_id'], values['column_id'], values['content'],
+                values.get('evidence_ids')
+            )
+            if not valid:
+                raise ValueError(error)
+        return v
 
 
 class PopulateGridRequest(BaseModel):
-    transcript_ids: List[str]
+    transcript_ids: List[str] = Field(..., min_items=1, max_items=50)
 
 
 class CompareMarketsRequest(BaseModel):
-    markets: List[str]
+    markets: List[str] = Field(..., min_items=1, max_items=20)
+
+    @validator('markets')
+    def validate_markets_list(cls, v):
+        valid, error = validate_markets(v)
+        if not valid:
+            raise ValueError(error)
+        return v
 
 
 class CreateEvidenceRequest(BaseModel):
-    source_type: str
-    source_id: str
-    content: str
-    evidence_type: str = "quote"
+    source_type: str = Field(..., min_length=1, max_length=50)
+    source_id: str = Field(..., min_length=1)
+    content: str = Field(..., min_length=1, max_length=10000)
+    evidence_type: str = Field("quote", pattern="^(quote|observation|insight|data_point|image|video)$")
     segment_id: Optional[str] = None
-    speaker: Optional[str] = None
-    themes: Optional[List[str]] = None
-    significance: Optional[str] = "medium"
-    market: Optional[str] = None
+    speaker: Optional[str] = Field(None, max_length=100)
+    themes: Optional[List[str]] = Field(None, max_items=20)
+    significance: Optional[str] = Field("medium", pattern="^(low|medium|high|critical)$")
+    market: Optional[str] = Field(None, max_length=50)
+
+    @validator('content')
+    def validate_evidence(cls, v):
+        valid, error = validate_evidence_content(v)
+        if not valid:
+            raise ValueError(error)
+        return sanitize_cell_content(v)
 
 
 class ExtractEvidenceRequest(BaseModel):
-    transcript_id: str
-    themes: Optional[List[str]] = None
+    transcript_id: str = Field(..., min_length=1)
+    themes: Optional[List[str]] = Field(None, max_items=20)
 
 
 class GenerateReportRequest(BaseModel):
-    title: str
-    report_type: str = "executive"
+    title: str = Field(..., min_length=1, max_length=200)
+    report_type: str = Field("executive", pattern="^(executive|detailed|summary|comparative)$")
     grid_id: Optional[str] = None
-    include_markets: Optional[List[str]] = None
+    include_markets: Optional[List[str]] = Field(None, max_items=20)
+
+    @validator('title')
+    def validate_title(cls, v):
+        valid, error = validate_report_title(v)
+        if not valid:
+            raise ValueError(error)
+        return v
 
 
 class CreateThemeRequest(BaseModel):
-    name: str
-    description: str
+    name: str = Field(..., min_length=1, max_length=100)
+    description: str = Field(..., min_length=1, max_length=500)
     parent_id: Optional[str] = None
-    color: Optional[str] = None
+    color: Optional[str] = Field(None, pattern="^#[0-9A-Fa-f]{6}$")
+
+    @validator('*', pre=True)
+    def validate_theme(cls, v, values):
+        if 'name' in values and 'description' in values:
+            valid, error = validate_theme_data(values['name'], values['description'])
+            if not valid:
+                raise ValueError(error)
+        return v
 
 
 class CreateInsightRequest(BaseModel):
-    title: str
-    description: str
-    category: str
-    themes: List[str]
-    priority: str = "medium"
-    evidence_ids: Optional[List[str]] = None
-    markets: Optional[List[str]] = None
+    title: str = Field(..., min_length=1, max_length=200)
+    description: str = Field(..., min_length=1, max_length=2000)
+    category: str = Field(..., min_length=1, max_length=50)
+    themes: List[str] = Field(..., min_items=1, max_items=10)
+    priority: str = Field("medium", pattern="^(low|medium|high|critical)$")
+    evidence_ids: Optional[List[str]] = Field(None, max_items=50)
+    markets: Optional[List[str]] = Field(None, max_items=20)
+
+    @validator('*', pre=True)
+    def validate_insight(cls, v, values):
+        if 'title' in values and 'description' in values and 'themes' in values:
+            valid, error = validate_insight_data(
+                values['title'], values['description'], values['themes']
+            )
+            if not valid:
+                raise ValueError(error)
+        return v
 
 
 # Grid Endpoints
 
 @router.post("/grids/{project_id}")
+@limiter.limit("10/minute")
 async def create_grid(
+    request: Request,
     project_id: str,
-    request: CreateGridRequest,
+    body: CreateGridRequest,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
@@ -121,10 +233,10 @@ async def create_grid(
     service = AnalysisGridService(db)
     grid = await service.create_grid(
         project_id=project_id,
-        name=request.name,
-        grid_type=request.grid_type,
-        analysis_type=request.analysis_type,
-        config=request.config
+        name=body.name,
+        grid_type=body.grid_type,
+        analysis_type=body.analysis_type,
+        config=body.config
     )
 
     return {"grid_id": grid.id, "status": "created"}
@@ -185,13 +297,15 @@ async def create_multimarket_grid(
     return {"grid_id": grid.id, "status": "created", "markets": request.markets}
 
 
-@router.get("/grids/{project_id}")
+@router.get("/grids/{project_id}", response_model=PaginatedResponse)
 async def list_grids(
     project_id: str,
+    skip: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Number of items to return"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """List all grids for a project"""
+    """List all grids for a project with pagination"""
     project = db.query(Project).filter_by(
         id=project_id,
         org_id=current_user.org_id
@@ -200,20 +314,35 @@ async def list_grids(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    grids = db.query(AnalysisGrid).filter_by(project_id=project_id).all()
+    # Get total count
+    total = db.query(func.count(AnalysisGrid.id)).filter_by(project_id=project_id).scalar()
 
-    return {
-        "grids": [
-            {
-                "id": g.id,
-                "name": g.name,
-                "type": g.grid_type,
-                "analysis_type": g.analysis_type,
-                "created_at": g.created_at.isoformat()
-            }
-            for g in grids
-        ]
-    }
+    # Get paginated grids
+    grids = (db.query(AnalysisGrid)
+            .filter_by(project_id=project_id)
+            .order_by(AnalysisGrid.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all())
+
+    items = [
+        {
+            "id": g.id,
+            "name": g.name,
+            "type": g.grid_type,
+            "analysis_type": g.analysis_type,
+            "created_at": g.created_at.isoformat()
+        }
+        for g in grids
+    ]
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+        has_more=(skip + limit) < total
+    )
 
 
 @router.get("/grids/detail/{grid_id}")
@@ -255,6 +384,83 @@ async def get_grid(
             for c in cells
         ]
     }
+
+
+class UpdateGridRequest(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=100)
+    config: Optional[dict] = None
+
+    @validator('name')
+    def validate_name(cls, v):
+        if v:
+            valid, error = validate_grid_name(v)
+            if not valid:
+                raise ValueError(error)
+        return v
+
+    @validator('config')
+    def validate_config(cls, v):
+        if v:
+            valid, error = validate_grid_config(v)
+            if not valid:
+                raise ValueError(error)
+        return v
+
+
+@router.put("/grids/{grid_id}")
+async def update_grid(
+    grid_id: str,
+    request: UpdateGridRequest,
+    current_user: User = Depends(require_role("admin", "researcher")),
+    db: Session = Depends(get_db)
+):
+    """Update an existing grid"""
+    grid = db.query(AnalysisGrid).filter_by(id=grid_id).first()
+
+    if not grid:
+        raise HTTPException(status_code=404, detail="Grid not found")
+
+    # Verify access
+    if grid.org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Update fields if provided
+    if request.name is not None:
+        grid.name = request.name
+    if request.config is not None:
+        grid.config = request.config
+
+    grid.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(grid)
+
+    return {"grid_id": grid.id, "status": "updated"}
+
+
+@router.delete("/grids/{grid_id}")
+async def delete_grid(
+    grid_id: str,
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db)
+):
+    """Delete a grid and all associated data"""
+    grid = db.query(AnalysisGrid).filter_by(id=grid_id).first()
+
+    if not grid:
+        raise HTTPException(status_code=404, detail="Grid not found")
+
+    # Verify access
+    if grid.org_id != current_user.org_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    # Delete associated cells
+    db.query(GridCell).filter_by(grid_id=grid_id).delete()
+
+    # Delete the grid
+    db.delete(grid)
+    db.commit()
+
+    return {"grid_id": grid_id, "status": "deleted"}
 
 
 @router.post("/grids/{grid_id}/cells")
@@ -401,16 +607,18 @@ async def extract_evidence(
     }
 
 
-@router.get("/evidence/{project_id}")
+@router.get("/evidence/{project_id}", response_model=PaginatedResponse)
 async def search_evidence(
     project_id: str,
-    themes: Optional[str] = Query(None),
+    skip: int = Query(0, ge=0, description="Number of items to skip"),
+    limit: int = Query(50, ge=1, le=100, description="Number of items to return"),
+    themes: Optional[str] = Query(None, description="Comma-separated theme IDs"),
     evidence_type: Optional[str] = Query(None),
     market: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Search evidence with filters"""
+    """Search evidence with filters and pagination"""
     project = db.query(Project).filter_by(
         id=project_id,
         org_id=current_user.org_id
@@ -419,32 +627,49 @@ async def search_evidence(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    service = EvidenceService(db)
-
+    # Validate search parameters
     theme_list = themes.split(",") if themes else None
+    valid, error = validate_search_params(theme_list, evidence_type, market)
+    if not valid:
+        raise HTTPException(status_code=400, detail=error)
 
-    evidence = await service.search_evidence(
-        project_id=project_id,
-        themes=theme_list,
-        evidence_type=evidence_type,
-        market=market
+    # Build query
+    query = db.query(Evidence).filter_by(project_id=project_id)
+
+    if theme_list:
+        query = query.filter(Evidence.themes.contains(theme_list))
+    if evidence_type:
+        query = query.filter_by(evidence_type=evidence_type)
+    if market:
+        query = query.filter_by(market=market)
+
+    # Get total count
+    total = query.count()
+
+    # Get paginated results
+    evidence = query.order_by(Evidence.created_at.desc()).offset(skip).limit(limit).all()
+
+    items = [
+        {
+            "id": e.id,
+            "content": e.content,
+            "source_type": e.source_type,
+            "evidence_type": e.evidence_type,
+            "speaker": e.speaker,
+            "themes": e.themes,
+            "significance": e.significance,
+            "market": e.market
+        }
+        for e in evidence
+    ]
+
+    return PaginatedResponse(
+        items=items,
+        total=total,
+        skip=skip,
+        limit=limit,
+        has_more=(skip + limit) < total
     )
-
-    return {
-        "evidence": [
-            {
-                "id": e.id,
-                "content": e.content,
-                "source_type": e.source_type,
-                "evidence_type": e.evidence_type,
-                "speaker": e.speaker,
-                "themes": e.themes,
-                "significance": e.significance,
-                "market": e.market
-            }
-            for e in evidence
-        ]
-    }
 
 
 # Report Endpoints
@@ -547,13 +772,15 @@ async def get_report(
 
 
 @router.get("/reports/{report_id}/export")
+@limiter.limit("5/minute")  # Limit export requests
 async def export_report(
+    request: Request,
     report_id: str,
-    format: str = Query("docx", regex="^(docx|pdf|pptx)$"),
+    format: str = Query("docx", pattern="^(docx|pdf|pptx|xlsx|json)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Export report in specified format"""
+    """Export report in specified format with size validation"""
     report = db.query(ContentAnalysisReport).filter_by(id=report_id).first()
 
     if not report:
@@ -562,8 +789,44 @@ async def export_report(
     if report.org_id != current_user.org_id:
         raise HTTPException(status_code=403, detail="Access denied")
 
+    # Validate export format
+    valid, error = validate_export_format(format)
+    if not valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    # Estimate report size
+    import json
+    report_data = {
+        "title": report.title,
+        "executive_summary": report.executive_summary,
+        "methodology": report.methodology,
+        "key_findings": report.key_findings,
+        "themes_analysis": report.themes_analysis,
+        "recommendations": report.recommendations,
+        "market_comparison": report.market_comparison,
+        "regional_patterns": report.regional_patterns,
+        "statistics": report.statistics
+    }
+    estimated_size = len(json.dumps(report_data))
+
+    # Check size limits
+    valid, error = ReportExportValidator.validate_export_request(estimated_size, format)
+    if not valid:
+        raise HTTPException(status_code=413, detail=error)
+
     service = ContentAnalysisService(db)
-    content = await service.export_report(report_id, format)
+
+    try:
+        content = await service.export_report(report_id, format)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+
+    # Check actual content size
+    if len(content) > MAX_EXPORT_SIZE:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Generated report exceeds maximum size limit of {MAX_EXPORT_SIZE // (1024*1024)}MB"
+        )
 
     # Return file response
     from fastapi.responses import Response
@@ -571,14 +834,21 @@ async def export_report(
     content_type_map = {
         "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "pdf": "application/pdf",
-        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "json": "application/json"
     }
+
+    # Sanitize filename
+    import re
+    safe_title = re.sub(r'[^a-zA-Z0-9\s\-_]', '', report.title)[:100]
 
     return Response(
         content=content,
         media_type=content_type_map[format],
         headers={
-            "Content-Disposition": f'attachment; filename="{report.title}.{format}"'
+            "Content-Disposition": f'attachment; filename="{safe_title}.{format}"',
+            "Content-Length": str(len(content))
         }
     )
 
@@ -603,7 +873,7 @@ async def create_theme(
 
     from ..models import _uid
 
-    theme = Theme(
+    theme = AnalysisTheme(
         id=_uid(),
         project_id=project_id,
         name=request.name,
@@ -633,7 +903,7 @@ async def list_themes(
     if not project:
         raise HTTPException(status_code=404, detail="Project not found")
 
-    themes = db.query(Theme).filter_by(project_id=project_id).all()
+    themes = db.query(AnalysisTheme).filter_by(project_id=project_id).all()
 
     return {
         "themes": [

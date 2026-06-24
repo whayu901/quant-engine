@@ -11,7 +11,7 @@ from sqlalchemy import func
 
 from .models_phase2 import (
     ContentAnalysisReport, AnalysisGrid, Evidence,
-    Theme, Insight, GridCell
+    AnalysisTheme, Insight, GridCell
 )
 from .models import Project, Transcript, TranscriptSegment
 from .models_phase1 import Market
@@ -43,9 +43,9 @@ class ContentAnalysisService:
             project_id=project_id
         ).all()
 
-        themes = self.db.query(Theme).filter_by(
+        themes = self.db.query(AnalysisTheme).filter_by(
             project_id=project_id
-        ).order_by(Theme.frequency.desc()).all()
+        ).order_by(AnalysisTheme.frequency.desc()).all()
 
         evidence = self.db.query(Evidence).filter_by(
             project_id=project_id,
@@ -115,7 +115,7 @@ class ContentAnalysisService:
         self,
         project: Project,
         transcripts: List[Transcript],
-        themes: List[Theme]
+        themes: List[AnalysisTheme]
     ) -> str:
         """Generate executive summary"""
 
@@ -160,7 +160,7 @@ recognition techniques.
 
     async def _generate_key_findings(
         self,
-        themes: List[Theme],
+        themes: List[AnalysisTheme],
         evidence: List[Evidence]
     ) -> List[Dict[str, Any]]:
         """Generate key findings list"""
@@ -212,7 +212,7 @@ recognition techniques.
 
     async def _generate_themes_analysis(
         self,
-        themes: List[Theme],
+        themes: List[AnalysisTheme],
         evidence: List[Evidence]
     ) -> Dict[str, Any]:
         """Generate detailed theme analysis"""
@@ -241,7 +241,7 @@ recognition techniques.
 
     async def _generate_recommendations(
         self,
-        themes: List[Theme],
+        themes: List[AnalysisTheme],
         key_findings: List[Dict]
     ) -> List[Dict[str, Any]]:
         """Generate actionable recommendations"""
@@ -401,7 +401,7 @@ recognition techniques.
     async def _generate_regional_patterns(
         self,
         markets: List[str],
-        themes: List[Theme]
+        themes: List[AnalysisTheme]
     ) -> Dict[str, Any]:
         """Identify regional patterns across SEA"""
 
@@ -480,7 +480,7 @@ recognition techniques.
     def _generate_statistics(
         self,
         transcripts: List[Transcript],
-        themes: List[Theme],
+        themes: List[AnalysisTheme],
         evidence: List[Evidence]
     ) -> Dict[str, Any]:
         """Generate statistical summary"""
@@ -525,13 +525,13 @@ recognition techniques.
 
         return stats
 
-    def _calculate_theme_sentiment(self, theme: Theme) -> str:
+    def _calculate_theme_sentiment(self, theme: AnalysisTheme) -> str:
         """Calculate overall sentiment for a theme"""
         # Mock implementation
         sentiments = ["positive", "neutral", "negative", "mixed"]
         return sentiments[hash(theme.name) % 4]
 
-    def _get_sub_themes(self, theme: Theme) -> List[str]:
+    def _get_sub_themes(self, theme: AnalysisTheme) -> List[str]:
         """Get sub-themes for a theme"""
         # Mock implementation
         sub_theme_map = {
@@ -541,12 +541,12 @@ recognition techniques.
         }
         return sub_theme_map.get(theme.id, [])
 
-    def _get_theme_quotes(self, theme: Theme, evidence: List[Evidence]) -> List[str]:
+    def _get_theme_quotes(self, theme: AnalysisTheme, evidence: List[Evidence]) -> List[str]:
         """Get representative quotes for a theme"""
         # Mock implementation - return first 3 evidence contents
         return [e.content[:200] for e in evidence[:3]]
 
-    def _generate_theme_implications(self, theme: Theme) -> List[str]:
+    def _generate_theme_implications(self, theme: AnalysisTheme) -> List[str]:
         """Generate business implications for a theme"""
         # Mock implementation
         implications_map = {
@@ -563,7 +563,7 @@ recognition techniques.
         }
         return implications_map.get(theme.id, ["Further research recommended"])
 
-    def _build_theme_hierarchy(self, themes: List[Theme]) -> Dict:
+    def _build_theme_hierarchy(self, themes: List[AnalysisTheme]) -> Dict:
         """Build hierarchical theme structure"""
         # Mock implementation
         return {
@@ -572,7 +572,7 @@ recognition techniques.
             "Technology Adoption": ["mobile_usage", "digital_payments"]
         }
 
-    def _identify_cross_patterns(self, themes: List[Theme]) -> List[Dict]:
+    def _identify_cross_patterns(self, themes: List[AnalysisTheme]) -> List[Dict]:
         """Identify patterns across themes"""
         # Mock implementation
         return [

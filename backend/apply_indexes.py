@@ -22,17 +22,24 @@ def apply_indexes():
 
         # Project indexes
         "CREATE INDEX IF NOT EXISTS idx_projects_org_id ON projects(org_id)",
+        "CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status)",
         "CREATE INDEX IF NOT EXISTS idx_projects_created_at ON projects(created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_transcripts_project_id ON transcripts(project_id)",
+        "CREATE INDEX IF NOT EXISTS idx_transcripts_transcription_status ON transcripts(transcription_status)",
         "CREATE INDEX IF NOT EXISTS idx_transcripts_created_at ON transcripts(created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_transcript_segments_transcript_id ON transcript_segments(transcript_id)",
 
         # Analysis indexes
         "CREATE INDEX IF NOT EXISTS idx_analyses_transcript_id ON analyses(transcript_id)",
+        "CREATE INDEX IF NOT EXISTS idx_analyses_status ON analyses(status)",
         "CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_themes_analysis_id ON themes(analysis_id)",
         "CREATE INDEX IF NOT EXISTS idx_verbatims_analysis_id ON verbatims(analysis_id)",
         "CREATE INDEX IF NOT EXISTS idx_verbatims_theme_id ON verbatims(theme_id)",
+
+        # Usage tracking
+        "CREATE INDEX IF NOT EXISTS idx_usage_records_org_id ON usage_records(org_id)",
+        "CREATE INDEX IF NOT EXISTS idx_usage_records_created_at ON usage_records(created_at DESC)",
 
         # Chat indexes
         "CREATE INDEX IF NOT EXISTS idx_chat_sessions_project_id ON chat_sessions(project_id)",
@@ -50,7 +57,10 @@ def apply_indexes():
         # Composite indexes for common queries
         "CREATE INDEX IF NOT EXISTS idx_projects_org_id_created_at ON projects(org_id, created_at DESC)",
         "CREATE INDEX IF NOT EXISTS idx_transcripts_project_id_created_at ON transcripts(project_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_transcript_org_project ON transcripts(org_id, project_id)",
         "CREATE INDEX IF NOT EXISTS idx_analyses_transcript_id_status ON analyses(transcript_id, status)",
+        "CREATE INDEX IF NOT EXISTS idx_analyses_org_created ON analyses(org_id, created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_usage_org_created ON usage_records(org_id, created_at DESC)",
     ]
 
     print(f"Applying {len(indexes)} critical indexes...")

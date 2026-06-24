@@ -1,0 +1,200 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: qual-engine-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: qualengine
+      POSTGRES_USER: qualengine
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-qualengine123}
+      POSTGRES_INITDB_ARGS: "-E UTF8"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qualengine"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - qual-engine-network
+
+  # Redis Cache & Message Broker
+  redis:
+    image: redis:7-alpine
+    container_name: qual-engine-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - qual-engine-network
+
+  # FastAPI Backend Application
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qual-engine-backend
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://qualengine:${DB_PASSWORD:-qualengine123}@postgres:5432/qualengine
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-}@redis:6379/2
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      APP_ENV: ${APP_ENV:-development}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://localhost:3001}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+      - ./alembic:/app/alembic
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - qual-engine-network
+    command: >
+      sh -c "
+        echo 'Waiting for database...' &&
+        alembic upgrade head &&
+        echo 'Database migrations complete' &&
+        uvicorn app.main:app --host 0.0.0.0 --port 8000
+      "
+
+  # Celery Worker for Async Tasks
+  celery-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qual-engine-celery-worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://qualengine:${DB_PASSWORD:-qualengine123}@postgres:5432/qualengine
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-}@redis:6379/2
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    volumes:
+      - ./storage:/app/storage
+      - ./logs:/app/logs
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - qual-engine-network
+    command: celery -A app.tasks worker --loglevel=info --concurrency=4
+
+  # Celery Beat for Scheduled Tasks
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qual-engine-celery-beat
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://qualengine:${DB_PASSWORD:-qualengine123}@postgres:5432/qualengine
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-}@redis:6379/2
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-your-secret-key-change-in-production}
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - qual-engine-network
+    command: celery -A app.tasks beat --loglevel=info
+
+  # Flower - Celery Monitoring Tool (Optional)
+  flower:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: qual-engine-flower
+    restart: unless-stopped
+    environment:
+      CELERY_BROKER_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/1
+      CELERY_RESULT_BACKEND: redis://:${REDIS_PASSWORD:-}@redis:6379/2
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - celery-worker
+    networks:
+      - qual-engine-network
+    command: celery -A app.tasks flower --port=5555
+
+  # Nginx Reverse Proxy (Optional - for production)
+  nginx:
+    image: nginx:alpine
+    container_name: qual-engine-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/sites-enabled:/etc/nginx/sites-enabled:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - ./storage/static:/usr/share/nginx/html/static:ro
+    depends_on:
+      - backend
+    networks:
+      - qual-engine-network
+    profiles:
+      - production
+
+  # pgAdmin - PostgreSQL Management Tool (Optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: qual-engine-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@qualengine.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin123}
+    ports:
+      - "5050:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - qual-engine-network
+    profiles:
+      - development
+
+networks:
+  qual-engine-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgadmin_data:
+    driver: local

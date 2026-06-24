@@ -13,7 +13,18 @@ from . import models_phase2  # noqa: F401  (register phase 2 models)
 from . import models_phase3  # noqa: F401  (register phase 3 models)
 from . import models_phase4  # noqa: F401  (register phase 4 models)
 from . import models_phase5  # noqa: F401  (register phase 5 models)
-from .routers import auth, projects, transcripts, analyses, usage, chat, admin, quantitative, rag_config
+from . import models_enterprise  # noqa: F401  (register enterprise models)
+from . import models_phase6  # noqa: F401  (register phase 6 models)
+from .routers import (
+    auth, projects, transcripts, analyses, usage, chat, admin,
+    quantitative, rag_config, analysis, collaboration, websocket, enterprise
+)
+# Import Phase 6 multimodal router
+try:
+    from .routers import multimodal
+    has_multimodal = True
+except ImportError:
+    has_multimodal = False
 try:
     from .routers import clips
     has_clips = True
@@ -54,9 +65,14 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept"],  # Explicit headers
 )
 
-routers = [auth, projects, transcripts, analyses, usage, chat, admin, quantitative, rag_config]
+routers = [
+    auth, projects, transcripts, analyses, analysis, usage, chat, admin,
+    quantitative, rag_config, collaboration, websocket, enterprise
+]
 if has_clips:
     routers.append(clips)
+if has_multimodal:
+    routers.append(multimodal)
 
 for r in routers:
     app.include_router(r.router)

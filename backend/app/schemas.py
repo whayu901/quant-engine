@@ -1,6 +1,8 @@
 from datetime import datetime
-from typing import List, Optional
+from typing import List, Optional, Generic, TypeVar
 from pydantic import BaseModel, EmailStr, ConfigDict
+
+T = TypeVar('T')
 
 
 class Token(BaseModel):
@@ -119,3 +121,12 @@ class UsageOut(BaseModel):
     month_count: int
     limit: int
     remaining: int
+
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    """Generic pagination response schema"""
+    items: List[T]
+    total: int
+    skip: int
+    limit: int
+    has_more: bool

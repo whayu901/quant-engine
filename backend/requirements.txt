@@ -17,3 +17,30 @@ python-docx
 openpyxl
 httpx
 boto3
+
+# Phase 6: Media Processing & AI Dependencies
+# Audio/Video Processing
+librosa==0.10.*           # Audio feature extraction
+soundfile==0.12.*         # Audio I/O
+moviepy==1.0.*           # Video manipulation
+webvtt-py==0.5.*         # WebVTT subtitle handling
+Pillow==10.*             # Image processing for thumbnails
+
+# Machine Learning & AI
+transformers==4.*         # Hugging Face transformers
+torch>=2.0               # PyTorch for deep learning
+datasets==2.*            # Hugging Face datasets
+mlflow==2.*              # ML experiment tracking
+scikit-learn==1.*        # Traditional ML algorithms
+
+# Advanced Transcription
+pyannote.audio==3.*      # Speaker diarization
+whisper==1.*             # OpenAI Whisper for local transcription
+
+# Vector Database (optional, for embeddings)
+# qdrant-client==1.*     # Uncomment if using Qdrant
+# pgvector==0.2.*        # Uncomment if using PostgreSQL vector
+
+# Monitoring & Performance
+prometheus-client==0.*    # Metrics export
+gunicorn==21.*           # Production WSGI server

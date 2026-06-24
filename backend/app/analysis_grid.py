@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from .models_phase2 import (
-    AnalysisGrid, GridCell, Evidence, Theme,
+    AnalysisGrid, GridCell, Evidence, AnalysisTheme,
     AnalysisType, GridType, Insight
 )
 from .models import Project, Transcript, TranscriptSegment

@@ -1,3 +1,4 @@
+from typing import Optional
 from fastapi import Depends, HTTPException
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
@@ -31,3 +32,16 @@ def owned_or_404(db: Session, model, obj_id: str, org_id: str):
     if not obj or getattr(obj, "org_id", None) != org_id:
         raise HTTPException(404, f"{model.__name__} not found")
     return obj
+
+
+async def get_current_user_ws(token: str, db: Session) -> Optional[models.User]:
+    """Get current user from WebSocket token"""
+    uid = security.decode_token(token)
+    if not uid:
+        return None
+
+    user = db.get(models.User, uid)
+    if not user or not user.is_active:
+        return None
+
+    return user
