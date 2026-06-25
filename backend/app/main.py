@@ -14,11 +14,13 @@ from . import models_phase3  # noqa: F401  (register phase 3 models)
 from . import models_phase4  # noqa: F401  (register phase 4 models)
 from . import models_phase5  # noqa: F401  (register phase 5 models)
 from . import models_enterprise  # noqa: F401  (register enterprise models)
-from . import models_phase6  # noqa: F401  (register phase 6 models)
+# from . import models_phase6  # noqa: F401  (temporarily disabled - duplicate table issue)
 from .routers import (
     auth, projects, transcripts, analyses, usage, chat, admin,
-    quantitative, rag_config, analysis, collaboration, websocket, enterprise
+    quantitative, rag_config, analysis, collaboration, websocket
 )
+# enterprise router temporarily disabled due to import issue
+# from .routers import enterprise
 # Import Phase 6 multimodal router
 try:
     from .routers import multimodal
@@ -67,7 +69,8 @@ app.add_middleware(
 
 routers = [
     auth, projects, transcripts, analyses, analysis, usage, chat, admin,
-    quantitative, rag_config, collaboration, websocket, enterprise
+    quantitative, rag_config, collaboration, websocket
+    # enterprise temporarily disabled due to import issue
 ]
 if has_clips:
     routers.append(clips)
