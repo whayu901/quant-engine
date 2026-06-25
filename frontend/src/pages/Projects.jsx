@@ -14,7 +14,9 @@ export default function Projects() {
   async function load() {
     try {
       const [p, u] = await Promise.all([api.projects(), api.usage()])
-      setProjects(p); setUsage(u)
+      // Handle both array and object responses
+      const projectsData = Array.isArray(p) ? p : (p?.projects || p?.items || [])
+      setProjects(projectsData); setUsage(u)
     } catch (e) { setErr(e.message) } finally { setLoading(false) }
   }
   useEffect(() => { load() }, [])
@@ -56,7 +58,7 @@ export default function Projects() {
 
       {err && <div className="err">{err}</div>}
       {loading ? <p className="muted">Memuat…</p> : (
-        projects.length === 0
+        !Array.isArray(projects) || projects.length === 0
           ? <p className="muted">Belum ada proyek. Buat satu di atas untuk mulai.</p>
           : projects.map((p) => (
             <Link key={p.id} to={`/projects/${p.id}`} className="card row between" style={{ marginBottom: 10 }}>

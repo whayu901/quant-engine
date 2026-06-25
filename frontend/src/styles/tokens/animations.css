@@ -1,0 +1,379 @@
+/**
+ * Qual Engine - Animation Tokens
+ * Design System v1.0
+ *
+ * Fast transitions (150-250ms) to reinforce speed promise
+ * Purposeful motion for state changes and celebrations
+ */
+
+:root {
+  /* Timing Functions */
+  --ease-speed: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --ease-smooth: cubic-bezier(0.4, 0, 0.6, 1);
+  --ease-entrance: cubic-bezier(0, 0, 0.2, 1);
+  --ease-exit: cubic-bezier(0.4, 0, 1, 1);
+
+  /* Durations */
+  --duration-instant: 0ms;
+  --duration-fast: 150ms;
+  --duration-normal: 200ms;
+  --duration-medium: 250ms;
+  --duration-slow: 300ms;
+  --duration-slower: 400ms;
+  --duration-celebration: 600ms;
+
+  /* Transition Presets */
+  --transition-speed: all 150ms var(--ease-speed);
+  --transition-normal: all 200ms var(--ease-speed);
+  --transition-smooth: all 300ms var(--ease-smooth);
+  --transition-bounce: all 400ms var(--ease-bounce);
+}
+
+/* Keyframe Animations */
+
+/* Spin (Loading spinners) */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Pulse (Processing states) */
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Bounce (Success celebrations) */
+@keyframes bounce {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+/* Scale Bounce (Button clicks, success badges) */
+@keyframes scale-bounce {
+  0% {
+    transform: scale(0.8);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Fade In */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Fade Out */
+@keyframes fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Slide Up */
+@keyframes slide-up {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Slide Down */
+@keyframes slide-down {
+  from {
+    transform: translateY(-20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Slide In Right */
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Slide Out Right */
+@keyframes slide-out-right {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+/* Shimmer (Skeleton loading) */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* Gradient Move (Speed gradient animation) */
+@keyframes gradient-move {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+/* Glow Pulse (AI processing) */
+@keyframes glow-pulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(123, 79, 255, 0.3);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(123, 79, 255, 0.6);
+  }
+}
+
+/* Progress Bar Fill */
+@keyframes progress-fill {
+  from {
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  to {
+    transform: scaleX(1);
+    transform-origin: left;
+  }
+}
+
+/* Count Up (for numbers) */
+@keyframes count-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Confetti Fall (celebration) */
+@keyframes confetti-fall {
+  0% {
+    transform: translateY(-100%) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(100vh) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Animation Utility Classes */
+
+/* Loading */
+.animate-spin {
+  animation: spin 0.8s linear infinite;
+}
+
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Entrance */
+.animate-fade-in {
+  animation: fade-in 250ms var(--ease-entrance);
+}
+
+.animate-slide-up {
+  animation: slide-up 300ms var(--ease-entrance);
+}
+
+.animate-slide-down {
+  animation: slide-down 300ms var(--ease-entrance);
+}
+
+.animate-slide-in-right {
+  animation: slide-in-right 300ms var(--ease-smooth);
+}
+
+/* Exit */
+.animate-fade-out {
+  animation: fade-out 200ms var(--ease-exit);
+}
+
+.animate-slide-out-right {
+  animation: slide-out-right 250ms var(--ease-exit);
+}
+
+/* Success/Celebration */
+.animate-bounce {
+  animation: bounce 600ms var(--ease-bounce);
+}
+
+.animate-scale-bounce {
+  animation: scale-bounce 400ms var(--ease-bounce);
+}
+
+/* Shimmer (Skeleton) */
+.animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--color-cloud) 0%,
+    #ffffff 50%,
+    var(--color-cloud) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Glow */
+.animate-glow {
+  animation: glow-pulse 2s ease-in-out infinite;
+}
+
+/* Transition Utilities */
+.transition-speed {
+  transition: var(--transition-speed);
+}
+
+.transition-normal {
+  transition: var(--transition-normal);
+}
+
+.transition-smooth {
+  transition: var(--transition-smooth);
+}
+
+.transition-all {
+  transition: all 200ms var(--ease-speed);
+}
+
+.transition-colors {
+  transition: background-color 200ms var(--ease-speed),
+              border-color 200ms var(--ease-speed),
+              color 200ms var(--ease-speed);
+}
+
+.transition-transform {
+  transition: transform 200ms var(--ease-speed);
+}
+
+.transition-opacity {
+  transition: opacity 200ms var(--ease-speed);
+}
+
+/* Hover/Active States */
+.hover-lift {
+  transition: transform 200ms var(--ease-speed),
+              box-shadow 200ms var(--ease-speed);
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+
+.hover-scale {
+  transition: transform 150ms var(--ease-speed);
+}
+
+.hover-scale:hover {
+  transform: scale(1.02);
+}
+
+.active-scale:active {
+  transform: scale(0.98);
+}
+
+/* Stagger Animation Delays */
+.stagger-1 { animation-delay: 80ms; }
+.stagger-2 { animation-delay: 160ms; }
+.stagger-3 { animation-delay: 240ms; }
+.stagger-4 { animation-delay: 320ms; }
+.stagger-5 { animation-delay: 400ms; }
+
+/* Reduced Motion Support */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-spin,
+  .animate-pulse,
+  .animate-glow,
+  .animate-shimmer {
+    animation: none !important;
+  }
+}
+
+/* Gradient Animation (for hero, speed elements) */
+.gradient-animate {
+  background-size: 200% 200%;
+  animation: gradient-move 8s ease infinite;
+}
+
+/* Page Transition Container */
+.page-transition-enter {
+  opacity: 0;
+  transform: translateY(20px);
+}
+
+.page-transition-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 300ms var(--ease-entrance) 100ms,
+              transform 300ms var(--ease-entrance) 100ms;
+}
+
+.page-transition-exit {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.page-transition-exit-active {
+  opacity: 0;
+  transform: scale(0.98);
+  transition: opacity 200ms var(--ease-exit),
+              transform 200ms var(--ease-exit);
+}

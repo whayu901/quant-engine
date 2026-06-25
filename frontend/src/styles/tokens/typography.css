@@ -1,0 +1,276 @@
+/**
+ * Qual Engine - Typography Tokens
+ * Design System v1.0
+ *
+ * Fonts:
+ * - Inter: UI & Body (excellent SEA language support)
+ * - Cal Sans: Display & Headlines
+ * - IBM Plex Mono: Code, Labels, Metrics
+ * - Newsreader: Quotes, Transcripts
+ */
+
+/* Font Imports */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400;1,6..72,500&display=swap');
+
+:root {
+  /* Font Families */
+  --font-sans: 'Inter', 'SF Pro Text', -apple-system, BlinkMacSystemFont,
+               'Segoe UI', 'Roboto', 'Noto Sans', 'Noto Sans CJK', sans-serif;
+  --font-display: 'Inter', system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', 'Monaco', 'Consolas',
+               'Liberation Mono', monospace;
+  --font-serif: 'Newsreader', 'Georgia', 'Times New Roman', serif;
+
+  /* Font Weights */
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+  --weight-extrabold: 800;
+
+  /* Font Sizes - Mobile First */
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 14px;
+  --text-md: 15px;
+  --text-lg: 16px;
+  --text-xl: 18px;
+  --text-2xl: 20px;
+  --text-3xl: 24px;
+  --text-4xl: 28px;
+  --text-5xl: 32px;
+
+  /* Line Heights */
+  --leading-tight: 1.1;
+  --leading-snug: 1.2;
+  --leading-normal: 1.4;
+  --leading-relaxed: 1.5;
+  --leading-loose: 1.6;
+  --leading-extra: 1.75;
+
+  /* Letter Spacing */
+  --tracking-tighter: -0.03em;
+  --tracking-tight: -0.02em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.08em;
+}
+
+/* Desktop Overrides */
+@media (min-width: 768px) {
+  :root {
+    --text-base: 16px;
+    --text-lg: 18px;
+    --text-xl: 22px;
+    --text-2xl: 28px;
+    --text-3xl: 36px;
+    --text-4xl: 44px;
+    --text-5xl: 56px;
+  }
+}
+
+/* Typography Classes */
+
+/* Display Sizes */
+.text-display-xl {
+  font-family: var(--font-display);
+  font-size: 32px;
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+  font-weight: var(--weight-bold);
+}
+
+.text-display-l {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: var(--leading-snug);
+  letter-spacing: var(--tracking-tight);
+  font-weight: var(--weight-bold);
+}
+
+.text-display-m {
+  font-family: var(--font-display);
+  font-size: 24px;
+  line-height: 1.3;
+  letter-spacing: var(--tracking-normal);
+  font-weight: var(--weight-semibold);
+}
+
+@media (min-width: 768px) {
+  .text-display-xl {
+    font-size: 56px;
+    letter-spacing: var(--tracking-tighter);
+  }
+
+  .text-display-l {
+    font-size: 44px;
+  }
+
+  .text-display-m {
+    font-size: 36px;
+    letter-spacing: var(--tracking-tight);
+  }
+}
+
+/* Heading Sizes */
+.text-heading-l {
+  font-family: var(--font-sans);
+  font-size: 20px;
+  line-height: var(--leading-normal);
+  letter-spacing: var(--tracking-normal);
+  font-weight: var(--weight-semibold);
+}
+
+.text-heading-m {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  line-height: var(--leading-normal);
+  letter-spacing: var(--tracking-normal);
+  font-weight: var(--weight-semibold);
+}
+
+.text-heading-s {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: var(--leading-relaxed);
+  letter-spacing: var(--tracking-normal);
+  font-weight: var(--weight-semibold);
+}
+
+@media (min-width: 768px) {
+  .text-heading-l {
+    font-size: 28px;
+    letter-spacing: var(--tracking-normal);
+  }
+
+  .text-heading-m {
+    font-size: 22px;
+    letter-spacing: var(--tracking-normal);
+  }
+
+  .text-heading-s {
+    font-size: 18px;
+  }
+}
+
+/* Body Sizes */
+.text-body-l {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: var(--leading-loose);
+  font-weight: var(--weight-regular);
+}
+
+.text-body-m {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: var(--leading-loose);
+  font-weight: var(--weight-regular);
+}
+
+.text-body-s {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: var(--leading-relaxed);
+  font-weight: var(--weight-regular);
+}
+
+@media (min-width: 768px) {
+  .text-body-l {
+    font-size: 18px;
+    line-height: 1.7;
+  }
+
+  .text-body-m {
+    font-size: 16px;
+  }
+
+  .text-body-s {
+    font-size: 14px;
+  }
+}
+
+/* Label (Mono) */
+.text-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: var(--leading-normal);
+  letter-spacing: var(--tracking-wide);
+  font-weight: var(--weight-medium);
+  text-transform: uppercase;
+}
+
+@media (min-width: 768px) {
+  .text-label {
+    font-size: 12px;
+  }
+}
+
+/* Micro */
+.text-micro {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: var(--leading-normal);
+  font-weight: var(--weight-regular);
+}
+
+@media (min-width: 768px) {
+  .text-micro {
+    font-size: 12px;
+  }
+}
+
+/* Font Family Utilities */
+.font-sans { font-family: var(--font-sans); }
+.font-display { font-family: var(--font-display); }
+.font-mono { font-family: var(--font-mono); }
+.font-serif { font-family: var(--font-serif); }
+
+/* Font Weight Utilities */
+.font-regular { font-weight: var(--weight-regular); }
+.font-medium { font-weight: var(--weight-medium); }
+.font-semibold { font-weight: var(--weight-semibold); }
+.font-bold { font-weight: var(--weight-bold); }
+.font-extrabold { font-weight: var(--weight-extrabold); }
+
+/* Text Rendering Optimization */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+.font-mono {
+  -webkit-font-smoothing: auto;
+  -moz-osx-font-smoothing: auto;
+}
+
+/* Responsive Text Utilities */
+.truncate {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-3 {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* Gradient Text */
+.text-gradient {
+  background: var(--gradient-speed);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
