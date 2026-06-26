@@ -1,13 +1,16 @@
 {
   "compilerOptions": {
     "target": "ES2020",
-    "useDefineForClassFields": true,
-    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2020",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "module": "ESNext",
     "skipLibCheck": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
-
+    "forceConsistentCasingInFileNames": true,
     /* Type Checking */
     "strict": true,
     "noUnusedLocals": true,
@@ -16,38 +19,62 @@
     "noImplicitAny": true,
     "strictNullChecks": true,
     "strictFunctionTypes": true,
-
     /* Module Resolution */
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "allowImportingTsExtensions": true,
-
     /* Emit */
     "noEmit": true,
-
+    "incremental": true,
     /* React/JSX */
-    "jsx": "react-jsx",
-    "jsxImportSource": "react",
-
+    "jsx": "preserve",
+    /* Next.js specific */
+    "plugins": [
+      {
+        "name": "next"
+      }
+    ],
     /* Path Mapping */
     "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
     "paths": {
-      "@/*": ["src/*"]
+      "@/*": [
+        "./*"
+      ],
+      "@/components/*": [
+        "./components/*"
+      ],
+      "@/lib/*": [
+        "./lib/*"
+      ],
+      "@/app/*": [
+        "./app/*"
+      ],
+      "@/store/*": [
+        "./store/*"
+      ],
+      "@/types/*": [
+        "./types/*"
+      ],
+      "@/styles/*": [
+        "./styles/*"
+      ]
     },
-
     /* Type Roots */
-    "typeRoots": ["node_modules/@types", "src/types"],
-    "types": ["vite/client", "react", "react-dom", "node"]
+    "typeRoots": [
+      "node_modules/@types"
+    ],
+    "allowJs": true
   },
   "include": [
-    "src/**/*",
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "src/**/*.d.ts",
-    "vite.config.ts"
+    "next-env.d.ts",
+    "**/*.ts",
+    "**/*.tsx",
+    ".next/types/**/*.ts"
   ],
-  "exclude": ["node_modules", "dist", "build"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "exclude": [
+    "node_modules",
+    ".next",
+    "out",
+    "src.old"
+  ]
 }

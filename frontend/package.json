@@ -2,36 +2,41 @@
   "name": "qual-engine-frontend",
   "private": true,
   "version": "0.1.0",
-  "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "preview": "vite preview"
+    "dev": "next dev -p 5173",
+    "build": "next build",
+    "start": "next start -p 5173",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@emotion/cache": "^11.14.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@hookform/resolvers": "^5.4.0",
+    "@mui/icons-material": "^5.18.0",
+    "@mui/material": "^5.18.0",
+    "@reduxjs/toolkit": "^2.12.0",
     "@tanstack/react-query": "^5.101.1",
     "@tanstack/react-table": "^8.21.3",
+    "axios": "^1.18.1",
     "axios-cache-adapter": "^2.7.3",
-    "framer-motion": "^12.41.0",
     "lucide-react": "^1.21.0",
+    "next": "^13.5.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-intersection-observer": "^10.0.3",
-    "react-router-dom": "^6.26.0",
+    "react-redux": "^9.3.0",
     "react-virtualized-auto-sizer": "^2.0.3",
     "react-window": "^2.2.7",
     "recharts": "^3.8.1",
-    "zod": "^4.4.3",
-    "zustand": "^5.0.14"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tanstack/react-query-devtools": "^5.101.1",
     "@types/node": "^26.0.0",
     "@types/react": "^18.3.31",
     "@types/react-dom": "^18.3.7",
-    "@vitejs/plugin-react": "^4.3.1",
-    "typescript": "^5.9.3",
-    "vite": "^5.4.0"
+    "typescript": "^5.9.3"
   }
 }
