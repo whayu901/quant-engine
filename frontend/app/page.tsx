@@ -16,7 +16,8 @@ export default function HomePage() {
       if (isAuthenticated) {
         router.push('/dashboard');
       } else {
-        router.push('/login');
+        // Redirect to landing page for unauthenticated users
+        router.push('/landing');
       }
     }
   }, [isAuthenticated, isLoading, router]);

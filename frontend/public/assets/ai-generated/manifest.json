@@ -1,0 +1,104 @@
+{
+  "generated": "2026-06-26T04:46:17.720Z",
+  "assets": [
+    {
+      "name": "hero-background",
+      "category": "hero",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_044619_3ac1c676-0354-4936-b54c-349594452066.png",
+      "prompt": "Ultra futuristic AI-powered transcription dashboard interface, floating holographic panels, purple and blue gradient neural networks, glass morphism UI elements, particles and light effects, cinematic lighting, 8K ultra detailed, wide angle view",
+      "model": "gpt_image_2",
+      "aspectRatio": "16:9",
+      "resolution": "4k"
+    },
+    {
+      "name": "ai-transcription",
+      "category": "features",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_044837_d7de208e-a2c8-4ec0-9007-178bc564226c.png",
+      "prompt": "Minimalist 3D icon of sound waves transforming into text with AI neural network, gradient purple to blue, glass morphism style, floating particles, modern flat design with depth",
+      "model": "gpt_image_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "multi-language",
+      "category": "features",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_045100_64043a66-c56f-4dbb-b423-1b8fdf93a90e.png",
+      "prompt": "Minimalist 3D globe with multiple language symbols floating around it, holographic glass effect, tech aesthetic, purple and cyan gradient colors, subtle glow",
+      "model": "gpt_image_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "real-time",
+      "category": "features",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_045338_9f7919f9-f0af-48ae-8723-43ccb891c2fc.png",
+      "prompt": "Minimalist 3D lightning bolt with data streams, representing speed and real-time processing, neon glow effect, glass morphism, purple gradient, tech style",
+      "model": "gpt_image_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "smart-analytics",
+      "category": "features",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_045627_5f8454e4-8272-4d1c-a135-05e84604fbae.png",
+      "prompt": "Minimalist 3D analytics dashboard with AI brain integration, charts and graphs, futuristic glass design, purple gradient with blue accents, floating elements",
+      "model": "gpt_image_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "avatar-1",
+      "category": "testimonials",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_045929_ed1ac398-29c1-41e1-bb01-1a65572d3e71.png",
+      "prompt": "Professional headshot of tech startup CEO, male, 35 years old, friendly smile, business casual, clean background, photorealistic",
+      "model": "nano_banana_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "avatar-2",
+      "category": "testimonials",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_050012_47df2e49-8820-4489-8657-9680b3255f72.png",
+      "prompt": "Professional headshot of software engineer, female, 28 years old, confident expression, tech company setting, photorealistic",
+      "model": "nano_banana_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "avatar-3",
+      "category": "testimonials",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_050044_800a5911-6ac4-4c53-9ed1-7d906298b818.png",
+      "prompt": "Professional headshot of product manager, male, 40 years old, approachable smile, modern office background, photorealistic",
+      "model": "nano_banana_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "avatar-4",
+      "category": "testimonials",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_050119_6eff0f42-c7b7-4005-85b2-71198e880e43.png",
+      "prompt": "Professional headshot of UX designer, female, 32 years old, creative professional, warm expression, photorealistic",
+      "model": "nano_banana_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "avatar-5",
+      "category": "testimonials",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_050151_e5f25ae3-337d-4e6d-9022-c9de476ef91e.png",
+      "prompt": "Professional headshot of data scientist, male, 38 years old, thoughtful expression, tech professional, photorealistic",
+      "model": "nano_banana_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    },
+    {
+      "name": "avatar-6",
+      "category": "testimonials",
+      "url": "https://d8j0ntlcm91z4.cloudfront.net/user_3EKdnOY1pE0wyJdTmSj8l64dxIY/hf_20260626_050223_d3025bec-3286-458c-bac8-bce7fd7b5433.png",
+      "prompt": "Professional headshot of marketing director, female, 45 years old, confident leader, business professional, photorealistic",
+      "model": "nano_banana_2",
+      "aspectRatio": "1:1",
+      "resolution": "2k"
+    }
+  ]
+}
