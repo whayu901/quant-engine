@@ -1,7 +1,12 @@
-import axios, { AxiosInstance, AxiosRequestConfig } from 'axios';
+import axios, { AxiosInstance, AxiosRequestConfig, InternalAxiosRequestConfig } from 'axios';
 
 class ApiClient {
   private client: AxiosInstance;
+  private isRefreshing = false;
+  private failedQueue: Array<{
+    resolve: (value?: unknown) => void;
+    reject: (reason?: unknown) => void;
+  }> = [];
 
   constructor() {
     const baseURL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
@@ -15,6 +20,18 @@ class ApiClient {
     });
 
     this.setupInterceptors();
+  }
+
+  private processQueue(error: Error | null, token: string | null = null): void {
+    this.failedQueue.forEach(({ resolve, reject }) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve(token);
+      }
+    });
+
+    this.failedQueue = [];
   }
 
   private setupInterceptors(): void {
@@ -32,15 +49,72 @@ class ApiClient {
       (error) => Promise.reject(error)
     );
 
-    // Response interceptor for error handling
+    // Response interceptor for error handling and token refresh
     this.client.interceptors.response.use(
       (response) => response,
       async (error) => {
-        if (error.response?.status === 401 && typeof window !== 'undefined') {
-          // Token expired or invalid
-          localStorage.removeItem('qe_token');
-          localStorage.removeItem('qe_user');
-          window.location.href = '/login';
+        const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+        // If error is 401 and we haven't tried to refresh yet
+        if (error.response?.status === 401 && !originalRequest._retry) {
+          if (this.isRefreshing) {
+            // If already refreshing, queue this request
+            return new Promise((resolve, reject) => {
+              this.failedQueue.push({ resolve, reject });
+            })
+              .then(() => {
+                return this.client(originalRequest);
+              })
+              .catch((err) => {
+                return Promise.reject(err);
+              });
+          }
+
+          originalRequest._retry = true;
+          this.isRefreshing = true;
+
+          if (typeof window !== 'undefined') {
+            const refreshToken = localStorage.getItem('qe_refresh_token');
+
+            if (!refreshToken) {
+              // No refresh token available, redirect to login
+              this.clearAuthAndRedirect();
+              return Promise.reject(error);
+            }
+
+            try {
+              // Try to refresh the token
+              const response = await axios.post(
+                `${this.client.defaults.baseURL}/auth/refresh`,
+                { refresh_token: refreshToken }
+              );
+
+              const { access_token: accessToken, refresh_token: newRefreshToken } = response.data;
+
+              // Update tokens in localStorage
+              localStorage.setItem('qe_token', accessToken);
+              if (newRefreshToken) {
+                localStorage.setItem('qe_refresh_token', newRefreshToken);
+              }
+
+              // Update the authorization header
+              this.client.defaults.headers.common['Authorization'] = `Bearer ${accessToken}`;
+              originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+
+              // Process queued requests
+              this.processQueue(null, accessToken);
+
+              // Retry the original request
+              return this.client(originalRequest);
+            } catch (refreshError) {
+              // Refresh failed, clear auth and redirect
+              this.processQueue(refreshError as Error, null);
+              this.clearAuthAndRedirect();
+              return Promise.reject(refreshError);
+            } finally {
+              this.isRefreshing = false;
+            }
+          }
         }
 
         // Extract error message
@@ -53,6 +127,15 @@ class ApiClient {
         return Promise.reject(new Error(message));
       }
     );
+  }
+
+  private clearAuthAndRedirect(): void {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('qe_token');
+      localStorage.removeItem('qe_refresh_token');
+      localStorage.removeItem('qe_user');
+      window.location.href = '/login';
+    }
   }
 
   async get<T>(url: string, config?: AxiosRequestConfig): Promise<T> {

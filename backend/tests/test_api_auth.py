@@ -20,10 +20,14 @@ class TestAuthRegister:
             "org_name": "My Organization"
         })
 
-        assert response.status_code == 200
+        assert response.status_code == 201  # Updated to 201 Created
         data = response.json()
         assert "access_token" in data
+        assert "refresh_token" in data
         assert data["token_type"] == "bearer"
+        assert "user" in data
+        assert data["status"] == "success"
+        assert data["user"]["email"] == "newuser@test.com"
 
     def test_register_creates_user(self, client: TestClient):
         """Test that register creates a user in the database."""
@@ -33,8 +37,12 @@ class TestAuthRegister:
             "org_name": "My Organization"
         })
 
-        assert response.status_code == 200
-        assert "access_token" in response.json()
+        assert response.status_code == 201
+        data = response.json()
+        assert "access_token" in data
+        assert "user" in data
+        assert data["user"]["id"]
+        assert data["user"]["org_id"]
 
     def test_register_creates_org(self, client: TestClient):
         """Test that register creates an organization."""
@@ -44,7 +52,9 @@ class TestAuthRegister:
             "org_name": "My Organization"
         })
 
-        assert response.status_code == 200
+        assert response.status_code == 201
+        data = response.json()
+        assert data["user"]["org_id"]
 
     def test_register_duplicate_email(self, client: TestClient, test_user):
         """Test that duplicate email registration fails."""
@@ -54,8 +64,12 @@ class TestAuthRegister:
             "org_name": "Different Org"
         })
 
-        assert response.status_code == 400
-        assert "already registered" in response.json()["detail"].lower()
+        assert response.status_code == 409  # Updated to 409 Conflict
+        detail = response.json()["detail"]
+        if isinstance(detail, dict):
+            assert "already exists" in detail["message"].lower()
+        else:
+            assert "already" in detail.lower()
 
     def test_register_invalid_email(self, client: TestClient):
         """Test that invalid email format is rejected."""
@@ -128,7 +142,7 @@ class TestAuthRegister:
             "org_name": "My Organization"
         })
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         token = response.json()["access_token"]
 
         # Use token to get user info
@@ -155,7 +169,12 @@ class TestAuthLogin:
         assert response.status_code == 200
         data = response.json()
         assert "access_token" in data
+        assert "refresh_token" in data
         assert data["token_type"] == "bearer"
+        assert "user" in data
+        assert data["status"] == "success"
+        assert data["user"]["email"] == test_user.email
+        assert data["user"]["id"] == test_user.id
 
     def test_login_wrong_password(self, client: TestClient, test_user):
         """Test login with wrong password."""
@@ -165,7 +184,11 @@ class TestAuthLogin:
         })
 
         assert response.status_code == 401
-        assert "invalid" in response.json()["detail"].lower()
+        detail = response.json()["detail"]
+        if isinstance(detail, dict):
+            assert "invalid" in detail["message"].lower()
+        else:
+            assert "invalid" in detail.lower()
 
     def test_login_nonexistent_user(self, client: TestClient):
         """Test login with nonexistent user."""
@@ -186,14 +209,14 @@ class TestAuthLogin:
         assert response.status_code == 401
 
     def test_login_case_sensitive_email(self, client: TestClient, test_user):
-        """Test that email is case-sensitive in login."""
+        """Test that email is case-insensitive in login."""
         response = client.post("/auth/login", data={
             "username": test_user.email.upper(),
             "password": test_user._password
         })
 
-        # Should fail because email is lowercase in DB
-        assert response.status_code == 401
+        # Should succeed because we normalize to lowercase
+        assert response.status_code == 200
 
     def test_login_returns_valid_token(self, client: TestClient, test_user):
         """Test that login returns a valid token."""
@@ -373,7 +396,11 @@ class TestAuthErrorHandling:
         })
 
         assert response.status_code == 401
-        assert "invalid" in response.json()["detail"].lower()
+        detail = response.json()["detail"]
+        if isinstance(detail, dict):
+            assert "invalid" in detail["message"].lower()
+        else:
+            assert "invalid" in detail.lower()
 
     def test_me_invalid_token_message(self, client: TestClient):
         """Test invalid token error message."""
@@ -401,8 +428,10 @@ class TestAuthIntegration:
             "org_name": "Test Organization"
         })
 
-        assert reg_response.status_code == 200
-        reg_token = reg_response.json()["access_token"]
+        assert reg_response.status_code == 201
+        reg_data = reg_response.json()
+        reg_token = reg_data["access_token"]
+        reg_user_from_response = reg_data["user"]
 
         # Use registration token to get user info
         me_response = client.get(
@@ -420,7 +449,9 @@ class TestAuthIntegration:
         })
 
         assert login_response.status_code == 200
-        login_token = login_response.json()["access_token"]
+        login_data = login_response.json()
+        login_token = login_data["access_token"]
+        login_user_from_response = login_data["user"]
 
         # Use login token to get user info
         login_me_response = client.get(
@@ -431,6 +462,119 @@ class TestAuthIntegration:
         assert login_me_response.status_code == 200
         login_user = login_me_response.json()
 
-        # Should be same user
+        # Should be same user in all responses
         assert reg_user["id"] == login_user["id"]
         assert reg_user["email"] == login_user["email"]
+        assert reg_user_from_response["id"] == login_user_from_response["id"]
+        assert reg_user_from_response["email"] == login_user_from_response["email"]
+
+
+@pytest.mark.api
+@pytest.mark.auth
+class TestAuthRetailRegistration:
+    """Test retail (individual) user registration."""
+
+    def test_retail_registration_success(self, client: TestClient):
+        """Test successful retail user registration."""
+        response = client.post("/auth/register", json={
+            "account_type": "retail",
+            "name": "John Doe",
+            "email": "john@example.com",
+            "password": "SecurePass123!",
+            "accept_terms": True,
+            "accept_privacy": True
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["user"]["email"] == "john@example.com"
+        assert data["user"]["name"] == "John Doe"
+        assert data["user"]["role"] == "admin"
+        assert "access_token" in data
+        assert "refresh_token" in data
+
+
+@pytest.mark.api
+@pytest.mark.auth
+class TestAuthEnterpriseRegistration:
+    """Test enterprise/organization registration."""
+
+    def test_enterprise_registration_success(self, client: TestClient):
+        """Test successful enterprise registration."""
+        response = client.post("/auth/register", json={
+            "account_type": "enterprise",
+            "organization_name": "Acme Corp",
+            "industry": "Technology",
+            "company_size": "50-200",
+            "admin_name": "Jane Smith",
+            "admin_email": "jane@acme.com",
+            "password": "SecurePass123!",
+            "accept_terms": True,
+            "accept_privacy": True
+        })
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["user"]["email"] == "jane@acme.com"
+        assert data["user"]["name"] == "Jane Smith"
+        assert data["user"]["role"] == "admin"
+        assert "access_token" in data
+        assert "refresh_token" in data
+
+
+@pytest.mark.api
+@pytest.mark.auth
+class TestAuthLoginJSON:
+    """Test JSON-based login endpoint."""
+
+    def test_login_json_success(self, client: TestClient, test_user):
+        """Test successful JSON login."""
+        response = client.post("/auth/login/json", json={
+            "email": test_user.email,
+            "password": test_user._password,
+            "remember_me": False
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert "access_token" in data
+        assert "refresh_token" in data
+        assert data["user"]["email"] == test_user.email
+        assert data["user"]["id"] == test_user.id
+
+    def test_login_json_with_remember_me(self, client: TestClient, test_user):
+        """Test JSON login with remember_me flag."""
+        response = client.post("/auth/login/json", json={
+            "email": test_user.email,
+            "password": test_user._password,
+            "remember_me": True
+        })
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+
+    def test_login_json_invalid_credentials(self, client: TestClient, test_user):
+        """Test JSON login with invalid credentials."""
+        response = client.post("/auth/login/json", json={
+            "email": test_user.email,
+            "password": "wrongpassword"
+        })
+
+        assert response.status_code == 401
+        detail = response.json()["detail"]
+        if isinstance(detail, dict):
+            assert "invalid" in detail["message"].lower()
+
+    def test_login_json_case_insensitive_email(self, client: TestClient, test_user):
+        """Test JSON login with uppercase email."""
+        response = client.post("/auth/login/json", json={
+            "email": test_user.email.upper(),
+            "password": test_user._password
+        })
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "success"

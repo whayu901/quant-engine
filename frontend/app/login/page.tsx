@@ -1,177 +1,261 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useForm, Controller } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import {
   Box,
-  Container,
-  Paper,
   TextField,
   Button,
-  Typography,
+  Checkbox,
+  FormControlLabel,
+  Link,
   Alert,
-  InputAdornment,
   IconButton,
+  InputAdornment,
+  CircularProgress,
 } from '@mui/material';
-import { Visibility, VisibilityOff, LockOutlined } from '@mui/icons-material';
-import { useAppDispatch } from '@/store/hooks';
-import { setUser } from '@/store/slices/authSlice';
-import { apiClient } from '@/lib/api-client';
+import { Eye, EyeOff, AlertCircle } from 'lucide-react';
+import AuthLayout from '@/components/auth/AuthLayout';
+import SocialAuthButtons from '@/components/auth/SocialAuthButtons';
+import { loginSchema, type LoginFormData, detectEnterpriseEmail } from '@/lib/validation/auth-schemas';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { loginUser } from '@/store/slices/authSlice';
 
 export default function LoginPage() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  const { isAuthenticated, isLoading, error } = useAppSelector((state) => state.auth);
+
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [showSSOMessage, setShowSSOMessage] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+  const {
+    control,
+    handleSubmit,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<LoginFormData>({
+    resolver: zodResolver(loginSchema),
+    defaultValues: {
+      email: '',
+      password: '',
+      rememberMe: false,
+    },
+  });
 
-    try {
-      const response = await apiClient.post<{ access_token: string; user: any }>(
-        '/api/auth/login',
-        { email, password }
-      );
+  const emailValue = watch('email');
 
-      // Save to localStorage
-      localStorage.setItem('qe_token', response.access_token);
-      localStorage.setItem('qe_user', JSON.stringify(response.user));
-
-      // Update Redux state
-      dispatch(setUser({ user: response.user, token: response.access_token }));
-
-      // Redirect to dashboard
+  useEffect(() => {
+    if (isAuthenticated) {
       router.push('/dashboard');
-    } catch (err: any) {
-      setError(err.message || 'Login failed. Please check your credentials.');
-    } finally {
-      setLoading(false);
+    }
+  }, [isAuthenticated, router]);
+
+  useEffect(() => {
+    // Check for enterprise email domain
+    if (emailValue && detectEnterpriseEmail(emailValue)) {
+      setShowSSOMessage(true);
+    } else {
+      setShowSSOMessage(false);
+    }
+  }, [emailValue]);
+
+  const onSubmit = async (data: LoginFormData) => {
+    try {
+      await dispatch(loginUser(data)).unwrap();
+      router.push('/dashboard');
+    } catch (err) {
+      // Error is handled by Redux state
+      console.error('Login error:', err);
     }
   };
 
+  const handleSocialAuth = (provider: 'google' | 'microsoft' | 'github') => {
+    // TODO: Implement social auth
+    console.log('Social auth with:', provider);
+  };
+
   return (
-    <Box
-      sx={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-        padding: 2,
-      }}
+    <AuthLayout
+      title="Welcome Back"
+      subtitle="Sign in to continue to your Qual Engine dashboard"
     >
-      <Container maxWidth="sm">
-        <Paper
-          elevation={8}
-          sx={{
-            padding: 4,
-            borderRadius: 3,
-            backdropFilter: 'blur(10px)',
-            backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          }}
-        >
-          <Box sx={{ textAlign: 'center', mb: 4 }}>
-            <Box
-              sx={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: 64,
-                height: 64,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                mb: 2,
-              }}
-            >
-              <LockOutlined sx={{ fontSize: 32, color: 'white' }} />
-            </Box>
-            <Typography variant="h4" component="h1" sx={{ fontWeight: 700, mb: 1 }}>
-              Welcome Back
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Sign in to access Qual Engine
-            </Typography>
-          </Box>
+      <Box component="form" onSubmit={handleSubmit(onSubmit)} noValidate>
+        {/* Social Auth Buttons */}
+        <SocialAuthButtons
+          mode="login"
+          onGoogleAuth={() => handleSocialAuth('google')}
+          onMicrosoftAuth={() => handleSocialAuth('microsoft')}
+          onGithubAuth={() => handleSocialAuth('github')}
+        />
 
-          {error && (
-            <Alert severity="error" sx={{ mb: 3 }}>
-              {error}
-            </Alert>
-          )}
+        {/* SSO Message */}
+        {showSSOMessage && (
+          <Alert
+            severity="info"
+            icon={<AlertCircle size={20} />}
+            sx={{ mb: 3, borderRadius: '12px' }}
+          >
+            Your organization may use Single Sign-On. Contact your admin if you need help signing in.
+          </Alert>
+        )}
 
-          <form onSubmit={handleSubmit}>
+        {/* Error Message */}
+        {error && (
+          <Alert severity="error" sx={{ mb: 3, borderRadius: '12px' }}>
+            {error}
+          </Alert>
+        )}
+
+        {/* Email Field */}
+        <Controller
+          name="email"
+          control={control}
+          render={({ field }) => (
             <TextField
+              {...field}
               fullWidth
               label="Email Address"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
               autoComplete="email"
-              sx={{ mb: 2 }}
+              error={!!errors.email}
+              helperText={errors.email?.message}
+              sx={{
+                mb: 2,
+                '& .MuiOutlinedInput-root': {
+                  height: 48,
+                },
+              }}
             />
+          )}
+        />
 
+        {/* Password Field */}
+        <Controller
+          name="password"
+          control={control}
+          render={({ field }) => (
             <TextField
+              {...field}
               fullWidth
               label="Password"
               type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
               autoComplete="current-password"
-              sx={{ mb: 3 }}
+              error={!!errors.password}
+              helperText={errors.password?.message}
+              sx={{
+                mb: 2,
+                '& .MuiOutlinedInput-root': {
+                  height: 48,
+                },
+              }}
               InputProps={{
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
                       onClick={() => setShowPassword(!showPassword)}
                       edge="end"
+                      size="small"
                     >
-                      {showPassword ? <VisibilityOff /> : <Visibility />}
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                     </IconButton>
                   </InputAdornment>
                 ),
               }}
             />
+          )}
+        />
 
-            <Button
-              fullWidth
-              type="submit"
-              variant="contained"
-              size="large"
-              disabled={loading}
-              sx={{
-                mb: 2,
-                py: 1.5,
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                '&:hover': {
-                  background: 'linear-gradient(135deg, #5568d3 0%, #6a3f8f 100%)',
-                },
-              }}
-            >
-              {loading ? 'Signing in...' : 'Sign In'}
-            </Button>
+        {/* Remember Me & Forgot Password */}
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            mb: 3,
+          }}
+        >
+          <Controller
+            name="rememberMe"
+            control={control}
+            render={({ field }) => (
+              <FormControlLabel
+                control={
+                  <Checkbox
+                    {...field}
+                    checked={field.value}
+                    size="small"
+                  />
+                }
+                label="Remember me"
+              />
+            )}
+          />
+          <Link
+            href="/forgot-password"
+            underline="hover"
+            sx={{
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              color: 'primary.main',
+            }}
+          >
+            Forgot password?
+          </Link>
+        </Box>
 
-            <Box sx={{ textAlign: 'center' }}>
-              <Typography variant="body2" color="text.secondary">
-                Don't have an account?{' '}
-                <Button
-                  variant="text"
-                  onClick={() => router.push('/register')}
-                  sx={{ textTransform: 'none' }}
-                >
-                  Sign up
-                </Button>
-              </Typography>
-            </Box>
-          </form>
-        </Paper>
-      </Container>
-    </Box>
+        {/* Submit Button */}
+        <Button
+          type="submit"
+          fullWidth
+          variant="contained"
+          disabled={isSubmitting || isLoading}
+          sx={{
+            height: 48,
+            background: 'linear-gradient(135deg, #0066FF 0%, #8B5CF6 100%)',
+            borderRadius: '12px',
+            fontSize: '1rem',
+            fontWeight: 600,
+            textTransform: 'none',
+            mb: 3,
+            '&:hover': {
+              background: 'linear-gradient(135deg, #0052CC 0%, #7C3AED 100%)',
+            },
+            '&.Mui-disabled': {
+              background: 'linear-gradient(135deg, #A0C4FF 0%, #D4C5F9 100%)',
+              color: 'white',
+            },
+          }}
+        >
+          {isSubmitting || isLoading ? (
+            <CircularProgress size={24} sx={{ color: 'white' }} />
+          ) : (
+            'Sign In'
+          )}
+        </Button>
+
+        {/* Sign Up Link */}
+        <Box sx={{ textAlign: 'center' }}>
+          <Link
+            href="/register"
+            underline="none"
+            sx={{
+              fontSize: '0.9375rem',
+              color: 'text.secondary',
+              '& span': {
+                color: 'primary.main',
+                fontWeight: 600,
+                ml: 0.5,
+              },
+            }}
+          >
+            Don&apos;t have an account?
+            <Box component="span">Sign up</Box>
+          </Link>
+        </Box>
+      </Box>
+    </AuthLayout>
   );
 }

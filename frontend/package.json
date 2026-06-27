@@ -3,9 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "next dev -p 5173",
+    "dev": "next dev",
     "build": "next build",
-    "start": "next start -p 5173",
+    "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit"
   },
@@ -26,6 +26,7 @@
     "next": "^13.5.6",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-hook-form": "^7.80.0",
     "react-intersection-observer": "^10.0.3",
     "react-redux": "^9.3.0",
     "react-virtualized-auto-sizer": "^2.0.3",

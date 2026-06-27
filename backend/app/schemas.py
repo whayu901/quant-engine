@@ -10,18 +10,59 @@ class Token(BaseModel):
     token_type: str = "bearer"
 
 
+class UserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    email: EmailStr
+    name: Optional[str] = None
+    role: str
+    org_id: str
+
+
+class AuthResponse(BaseModel):
+    """Complete authentication response with user data and tokens"""
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    user: UserOut
+    status: str = "success"
+
+
+class RegisterRetailIn(BaseModel):
+    """Registration for individual/retail users"""
+    account_type: str = "retail"
+    name: str
+    email: EmailStr
+    password: str
+    accept_terms: bool = True
+    accept_privacy: bool = True
+
+
+class RegisterEnterpriseIn(BaseModel):
+    """Registration for enterprise/organization users"""
+    account_type: str = "enterprise"
+    organization_name: str
+    industry: Optional[str] = None
+    company_size: Optional[str] = None
+    admin_name: str
+    admin_email: EmailStr
+    password: str
+    accept_terms: bool = True
+    accept_privacy: bool = True
+
+
 class RegisterIn(BaseModel):
+    """Legacy registration schema for backwards compatibility"""
     email: EmailStr
     password: str
     org_name: str
 
 
-class UserOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: str
+class LoginIn(BaseModel):
+    """Login request schema"""
     email: EmailStr
-    role: str
-    org_id: str
+    password: str
+    remember_me: bool = False
 
 
 class OrgOut(BaseModel):
