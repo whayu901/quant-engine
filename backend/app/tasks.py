@@ -10,8 +10,8 @@ from .storage import storage
 def import_fieldwork_batch(import_job_id: str):
     """Phase 2: parse an uploaded CSV/XLSX into Interview rows for a batch.
 
-    The ImportJob carries the storage key in `payload_ref` and the target
-    batch id in `result_summary["batch_id"]` (seeded by the import endpoint).
+    The ImportJob carries the storage key in `payload_ref` and the target batch
+    in its `batch_id` column. `result_summary` is output-only import stats.
     """
     from .models_phase1 import ImportJob
     from .models_fieldwork import FieldworkBatch
@@ -22,8 +22,7 @@ def import_fieldwork_batch(import_job_id: str):
         job = db.get(ImportJob, import_job_id)
         if not job:
             return
-        batch_id = (job.result_summary or {}).get("batch_id")
-        batch = db.get(FieldworkBatch, batch_id) if batch_id else None
+        batch = db.get(FieldworkBatch, job.batch_id) if job.batch_id else None
         if not batch:
             job.status = "failed"
             job.error = "Batch not found for import job"
@@ -36,10 +35,10 @@ def import_fieldwork_batch(import_job_id: str):
         db.commit()
 
         content = storage.open(job.payload_ref).read()
-        summary = fieldwork_import.import_into_batch(
-            db, batch, content, (job.result_summary or {}).get("filename", ""))
+        # payload_ref ends with the original filename, so it carries the extension.
+        summary = fieldwork_import.import_into_batch(db, batch, content, job.payload_ref)
 
-        job.result_summary = {**(job.result_summary or {}), **summary}
+        job.result_summary = summary
         job.status = "completed"
         job.completed_at = datetime.utcnow()
         batch.status = "pending"  # imported; awaiting QC run
@@ -51,9 +50,8 @@ def import_fieldwork_batch(import_job_id: str):
             job.status = "failed"
             job.error = str(e)[:1000]
             job.completed_at = datetime.utcnow()
-            batch_id = (job.result_summary or {}).get("batch_id")
-            if batch_id:
-                b = db.get(FieldworkBatch, batch_id)
+            if job.batch_id:
+                b = db.get(FieldworkBatch, job.batch_id)
                 if b:
                     b.status = "failed"
             db.commit()

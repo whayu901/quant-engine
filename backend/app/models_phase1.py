@@ -49,6 +49,7 @@ class ImportJob(Base):
     org_id = Column(String(32), ForeignKey("orgs.id"), nullable=False)
     project_id = Column(String(32), ForeignKey("projects.id"), nullable=False)
     integration_id = Column(String(32), ForeignKey("integrations.id"), nullable=True)
+    batch_id = Column(String(32), ForeignKey("fieldwork_batches.id"), nullable=True)  # Fieldwork QC import target
     source = Column(String(32), nullable=False)  # excel | json | api | community
     status = Column(String(32), default="pending")  # pending | running | completed | failed
     payload_ref = Column(Text)  # File path or API reference

@@ -164,15 +164,21 @@ def test_import_into_batch_core(db, test_project):
     assert r1.answers["q3_brand_quality"] == "1"
     assert r1.answers["q9_brand_word"] == "terjangkau"
     assert r1.answers["q10_nps"] == "1"
-    assert r1.answers["_audio_ref"] == "aud/INT-001-1001.wav"
-    # Survey answers do not leak meta columns.
-    assert "external_id" not in r1.answers
-    assert "gps_lat" not in r1.answers
+
+    # answers is EXACTLY q1..q10 — no audio ref, no meta keys leaked in.
+    assert set(r1.answers) == {
+        "q1_age", "q2_gender", "q3_brand_quality", "q4_value", "q5_trust",
+        "q6_innovation", "q7_service", "q8_recommend", "q9_brand_word", "q10_nps",
+    }
+    assert "_audio_ref" not in r1.answers
+
+    # audio_ref lives on its own column now.
+    assert r1.audio_ref == "aud/INT-001-1001.wav"
 
     # media_id is null for everyone in Phase 2 (no MediaAsset created yet)...
     assert all(r.media_id is None for r in rows)
-    # ...and the empty-audio rows preserve a null audio ref.
-    assert by_ext["R1042"].answers["_audio_ref"] is None
+    # ...and the empty-audio rows have a null audio_ref.
+    assert by_ext["R1042"].audio_ref is None
 
 
 def test_import_skips_rows_without_external_id(db, test_project):
@@ -215,9 +221,9 @@ def test_import_xlsx(db, test_project):
     rows = {r.external_id: r for r in db.query(Interview).filter(Interview.batch_id == batch.id)}
     assert rows["R1"].duration_sec == 300
     assert abs(rows["R1"].gps_lat - (-6.2)) < 1e-6
-    assert rows["R1"].answers["q1_age"] == "18-24"
-    assert rows["R1"].answers["_audio_ref"] == "aud/a.wav"
-    assert rows["R2"].answers["_audio_ref"] is None
+    assert rows["R1"].answers == {"q1_age": "18-24"}
+    assert rows["R1"].audio_ref == "aud/a.wav"
+    assert rows["R2"].audio_ref is None
 
 
 def test_import_endpoint_e2e(client, researcher_headers, test_project, eager_import):
@@ -255,6 +261,56 @@ def test_import_endpoint_e2e(client, researcher_headers, test_project, eager_imp
     assert len(listing["items"]) == 52
     assert all(i["org_id"] == test_project.org_id for i in listing["items"])
     assert all(i["batch_id"] == batch_id for i in listing["items"])
+
+
+def test_import_is_idempotent(db, test_project):
+    """Re-importing the same file does not duplicate rows; dups are skipped."""
+    from app.models_fieldwork import Interview
+    from app.fieldwork_import import import_into_batch
+
+    batch = _make_batch(db, test_project)
+    content = SAMPLE_CSV.read_bytes()
+
+    first = import_into_batch(db, batch, content, "fieldwork_qc_sample.csv")
+    assert first["imported"] == 52
+    assert first["skipped"] == 0
+
+    second = import_into_batch(db, batch, content, "fieldwork_qc_sample.csv")
+    assert second["imported"] == 0
+    assert second["skipped"] == 52
+    assert all(r["reason"] == "duplicate external_id in batch"
+               for r in second["skipped_reasons"])
+
+    # Total stays 52, not 104.
+    assert db.query(Interview).filter(Interview.batch_id == batch.id).count() == 52
+
+
+def test_import_job_linked_by_column(client, researcher_headers, test_project, eager_import, db):
+    """ImportJob.batch_id is set via column; result_summary is stats-only."""
+    from app.models_phase1 import ImportJob
+
+    resp = client.post(
+        "/api/v1/fieldwork-qc/batches",
+        json={"project_id": test_project.id, "name": "Linked Batch"},
+        headers=researcher_headers,
+    )
+    batch_id = resp.json()["id"]
+
+    with open(SAMPLE_CSV, "rb") as f:
+        resp = client.post(
+            f"/api/v1/fieldwork-qc/batches/{batch_id}/import",
+            files={"file": ("fieldwork_qc_sample.csv", f, "text/csv")},
+            headers=researcher_headers,
+        )
+    assert resp.status_code == 200, resp.text
+    job_id = resp.json()["import_job_id"]
+
+    job = db.get(ImportJob, job_id)
+    db.refresh(job)
+    assert job.batch_id == batch_id
+    # result_summary carries only import stats — no batch_id / filename plumbing.
+    assert set(job.result_summary) == {"imported", "skipped", "skipped_reasons", "source_format"}
+    assert job.result_summary["imported"] == 52
 
 
 def test_import_endpoint_requires_role(client, viewer_headers, test_project, db):

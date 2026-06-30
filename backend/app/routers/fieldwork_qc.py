@@ -107,10 +107,10 @@ async def import_batch(batch_id: str,
     job = ImportJob(
         org_id=user.org_id,
         project_id=batch.project_id,
+        batch_id=batch_id,
         source=batch.source,
         status="pending",
         payload_ref=storage_key,
-        result_summary={"batch_id": batch_id, "filename": filename},
     )
     db.add(job)
     batch.status = "importing"

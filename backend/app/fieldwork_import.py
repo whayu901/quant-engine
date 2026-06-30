@@ -10,9 +10,14 @@ Column mapping (the rest of the columns are treated as survey answers):
     gps_lat, gps_lng (float), audio_ref (filename pointer)
 
 Everything not in that meta set (e.g. q1_age .. q10_nps) goes into `answers`.
-`audio_ref` is preserved as `answers["_audio_ref"]` so Phase 5 (audio-vs-answers)
-can resolve the recording later; no MediaAsset is created at import time, so
-`media_id` is always null in Phase 2.
+`answers` is kept pure (survey responses only) so Phase 3 detectors can hash and
+compare it directly. `audio_ref` is stored on its own Interview column for Phase 5
+(audio-vs-answers); no MediaAsset is created at import time, so `media_id` is
+always null in Phase 2.
+
+Re-importing the same batch is idempotent: rows whose (batch_id, external_id)
+already exists — or that duplicate an external_id within the file — are skipped
+and reported in the result summary, never inserted twice.
 """
 
 import csv
@@ -114,9 +119,8 @@ def parse_fieldwork_rows(content: bytes, filename: str) -> tuple[list[dict], lis
             skipped.append({"row": i, "external_id": None, "reason": "missing external_id"})
             continue
 
-        audio_ref = _clean(raw.get("audio_ref"))
+        # answers = survey responses only (no meta keys) so detectors can hash it.
         answers = {k: v for k, v in raw.items() if k not in META_COLUMNS and k}
-        answers["_audio_ref"] = audio_ref
 
         parsed.append({
             "external_id": external_id,
@@ -127,6 +131,7 @@ def parse_fieldwork_rows(content: bytes, filename: str) -> tuple[list[dict], lis
             "duration_sec": _parse_int(raw.get("duration_sec")),
             "gps_lat": _parse_float(raw.get("gps_lat")),
             "gps_lng": _parse_float(raw.get("gps_lng")),
+            "audio_ref": _clean(raw.get("audio_ref")),
             "answers": answers,
         })
 
@@ -136,11 +141,25 @@ def parse_fieldwork_rows(content: bytes, filename: str) -> tuple[list[dict], lis
 def import_into_batch(db, batch, content: bytes, filename: str) -> dict:
     """
     Parse `content` and create Interview rows under `batch`. Operates on the
-    given db session (commits). Returns a result_summary dict.
+    given db session (commits). Idempotent on (batch_id, external_id). Returns a
+    result_summary dict of stats.
     """
     parsed, skipped = parse_fieldwork_rows(content, filename)
 
+    # Existing external_ids already in this batch -> skip (idempotent re-import).
+    existing = {
+        x[0] for x in
+        db.query(Interview.external_id).filter(Interview.batch_id == batch.id).all()
+    }
+    seen: set[str] = set()
+    imported = 0
     for row in parsed:
+        ext = row["external_id"]
+        if ext in existing or ext in seen:
+            skipped.append({"row": None, "external_id": ext,
+                            "reason": "duplicate external_id in batch"})
+            continue
+        seen.add(ext)
         db.add(Interview(
             org_id=batch.org_id,
             project_id=batch.project_id,
@@ -148,12 +167,13 @@ def import_into_batch(db, batch, content: bytes, filename: str) -> dict:
             qc_status="pending",
             **row,
         ))
+        imported += 1
     db.commit()
 
     name = (filename or "").lower()
     fmt = "xlsx" if name.endswith((".xlsx", ".xlsm", ".xls")) else "csv"
     return {
-        "imported": len(parsed),
+        "imported": imported,
         "skipped": len(skipped),
         "skipped_reasons": skipped,
         "source_format": fmt,

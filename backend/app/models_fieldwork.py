@@ -14,7 +14,10 @@ guaranteed to exist in every deployment.
 """
 
 from datetime import datetime
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey, Integer, Float, JSON
+from sqlalchemy import (
+    Column, String, Text, DateTime, ForeignKey, Integer, Float, JSON,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 from .database import Base
 from .models import _uid
@@ -48,6 +51,10 @@ class FieldworkBatch(Base):
 class Interview(Base):
     """One respondent record to verify."""
     __tablename__ = "interviews"
+    # (batch_id, external_id) is unique so re-importing a batch is idempotent.
+    __table_args__ = (
+        UniqueConstraint("batch_id", "external_id", name="uq_interviews_batch_external"),
+    )
 
     id = Column(String(32), primary_key=True, default=_uid)
     org_id = Column(String(32), ForeignKey("orgs.id"), nullable=False, index=True)
@@ -61,8 +68,9 @@ class Interview(Base):
     duration_sec = Column(Integer, nullable=True)
     gps_lat = Column(Float, nullable=True)
     gps_lng = Column(Float, nullable=True)
+    audio_ref = Column(String, nullable=True)            # silent-audio filename pointer (Phase 5)
     media_id = Column(String(32), ForeignKey("media_assets.id"), nullable=True)
-    answers = Column(JSON)                               # the survey responses
+    answers = Column(JSON)                               # the survey responses (q1..q10 only)
     qc_status = Column(String(32), default="pending")    # pending | pass | flag | reject | review
     qc_score = Column(Float, nullable=True)              # 0..1
     created_at = Column(DateTime, default=datetime.utcnow)
