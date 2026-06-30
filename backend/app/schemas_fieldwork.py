@@ -61,6 +61,11 @@ class FieldworkImportOut(BaseModel):
     error: Optional[str] = None
 
 
+class ImportFromIntegrationIn(BaseModel):
+    """Request body for POST /batches/{batch_id}/import-from-integration."""
+    integration_id: str
+
+
 class QCFlagOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str

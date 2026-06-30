@@ -18,6 +18,7 @@ failed eligibility) rejects an interview; only `warn` flags downgrade it to
 `flag`; no flags means `pass`.
 """
 
+import re
 from collections import defaultdict
 
 # --- check names (stable contract) -----------------------------------------
@@ -30,6 +31,11 @@ DUPLICATE_OPENEND = "duplicate_openend"
 AUDIO_PRESENCE = "audio_presence"
 CADENCE_IMPOSSIBLE = "cadence_impossible"
 ELIGIBILITY = "eligibility"
+# Phase 5: audio-vs-answers cross-check. Critical because a discrepancy between
+# what the respondent said on tape and what was recorded in the survey is strong
+# evidence of fabrication (the interviewer filled answers without conducting the
+# interview), which is the same fraud category as GPS_IDENTICAL / CADENCE_IMPOSSIBLE.
+AUDIO_MISMATCH = "audio_mismatch"
 
 # --- severity by check ------------------------------------------------------
 WARN = "warn"
@@ -44,14 +50,17 @@ SEVERITY = {
     DUPLICATE_OPENEND: CRITICAL,
     CADENCE_IMPOSSIBLE: CRITICAL,
     ELIGIBILITY: CRITICAL,
+    AUDIO_MISMATCH: CRITICAL,
 }
 
 # Score penalty per severity (documented; clean interviews always score 1.0/pass).
 _PENALTY = {WARN: 0.2, CRITICAL: 0.5}
 
 # Fabrication / curbstoning checks — these are what reject as fraud (as opposed
-# to `eligibility`, which is a screen-out, not fabrication).
-FABRICATION_CHECKS = frozenset({GPS_IDENTICAL, DUPLICATE_OPENEND, CADENCE_IMPOSSIBLE})
+# to `eligibility`, which is a screen-out, not fabrication). AUDIO_MISMATCH is
+# included because a mismatch between the audio and the recorded answers is
+# direct evidence of answer fabrication; report/anomaly treat it consistently.
+FABRICATION_CHECKS = frozenset({GPS_IDENTICAL, DUPLICATE_OPENEND, CADENCE_IMPOSSIBLE, AUDIO_MISMATCH})
 
 # Interviewer anomaly weights (each input ratio is 0..1, so the score is 0..1).
 #   anomaly = 0.5 * critical-fabrication ratio
@@ -78,6 +87,16 @@ DEFAULT_RULES = {
                         "q9_brand_word"],
     "eligibility": {"q1_age_in": ["18-24", "25-34", "35-44"]},
     "cadence_min_gap_sec": 60,
+    # Phase 5 audio-vs-answers thresholds.
+    # audio_min_speakers: a real interview needs at least one interviewer and one
+    #   respondent speaking; a single-speaker or silent recording is a strong
+    #   fabrication signal.
+    # audio_min_speech_ratio: the speech span (max end_sec - min start_sec across
+    #   all segments) divided by the claimed interview duration must meet this
+    #   ratio; a recording that is overwhelmingly silent relative to the survey
+    #   length suggests the audio file was not the actual interview.
+    "audio_min_speakers": 2,
+    "audio_min_speech_ratio": 0.4,
 }
 
 
@@ -242,6 +261,89 @@ def detect_cadence(interviews, rules):
                                   "detail": {"reason": reason, "gap_sec": gap, "min_gap_sec": min_gap,
                                              "with": prev.external_id, "role": "later"}}))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — audio-vs-answers fabrication detector (pure, no DB)
+# ---------------------------------------------------------------------------
+
+def audio_match_check(interview, segments, rules) -> list:
+    """Cross-check an audio transcript against the survey answers.
+
+    `segments` is a list of TranscriptSegment-like objects with attributes
+    `speaker`, `start_sec`, `end_sec`, `text` (all nullable). Returns at most
+    one flag dict or an empty list.
+
+    Degrades gracefully: empty segments -> [] (the no-audio case is Phase 3's
+    `audio_presence` check, not this one).
+
+    Signals — ANY one trips an `audio_mismatch` critical flag:
+      - too_few_speakers:   distinct non-empty speaker count < audio_min_speakers
+                            (default 2).  One speaker / silence → fabrication.
+      - speech_too_short:   speech span (max end_sec - min start_sec) is below
+                            audio_min_speech_ratio * interview.duration_sec
+                            (default 0.4).  Silent / near-silent file vs a
+                            claimed 10-minute survey → fabrication.
+      - openend_not_heard:  q9_brand_word is non-empty and none of its word
+                            tokens (len>=3, lowercased) appear anywhere in the
+                            joined transcript text.  "Answer recorded but not
+                            heard" is the classic fabrication signature.
+    """
+    if not segments:
+        return []
+
+    reasons = []
+
+    # 1. Distinct speaker count.
+    min_speakers = rules.get("audio_min_speakers", 2)
+    speakers = {s.speaker for s in segments if s.speaker and s.speaker.strip()}
+    if len(speakers) < min_speakers:
+        reasons.append({
+            "signal": "too_few_speakers",
+            "speaker_count": len(speakers),
+            "required": min_speakers,
+            "speakers": sorted(speakers),
+        })
+
+    # 2. Speech span vs claimed duration.
+    ratio = rules.get("audio_min_speech_ratio", 0.4)
+    ends = [s.end_sec for s in segments if s.end_sec is not None]
+    starts = [s.start_sec for s in segments if s.start_sec is not None]
+    if starts and ends and interview.duration_sec:
+        span = max(ends) - min(starts)
+        required = ratio * interview.duration_sec
+        if span < required:
+            reasons.append({
+                "signal": "speech_too_short",
+                "span_sec": round(span, 2),
+                "duration_sec": interview.duration_sec,
+                "ratio": ratio,
+                "required_span_sec": round(required, 2),
+            })
+
+    # 3. Open-end (q9) word not heard in transcript.
+    q9 = (getattr(interview, "answers", None) or {}).get("q9_brand_word", "")
+    if q9:
+        tokens = {t.lower() for t in re.split(r"\W+", str(q9)) if len(t) >= 3}
+        if tokens:
+            transcript_text = " ".join(
+                (s.text or "") for s in segments
+            ).lower()
+            if not any(tok in transcript_text for tok in tokens):
+                reasons.append({
+                    "signal": "openend_not_heard",
+                    "q9_brand_word": q9,
+                    "tokens_checked": sorted(tokens),
+                })
+
+    if not reasons:
+        return []
+
+    return [{
+        "check": AUDIO_MISMATCH,
+        "severity": SEVERITY[AUDIO_MISMATCH],
+        "detail": {"reasons": reasons},
+    }]
 
 
 DETECTORS = (

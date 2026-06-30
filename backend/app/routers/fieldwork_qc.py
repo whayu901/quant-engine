@@ -15,16 +15,16 @@ from sqlalchemy import func
 from .. import models, schemas
 from ..models import _uid
 from ..models_fieldwork import FieldworkBatch, Interview, QCFlag, InterviewerScore
-from ..models_phase1 import ImportJob
+from ..models_phase1 import ImportJob, Integration
 from ..schemas_fieldwork import (
     FieldworkBatchIn, FieldworkBatchOut, InterviewOut, FieldworkImportOut,
     InterviewDetailOut, QCFlagOut, InterviewerScoreOut, FlagResolveIn,
-    FieldworkReportOut,
+    FieldworkReportOut, ImportFromIntegrationIn,
 )
 from ..database import get_db
 from ..deps import get_current_user, require_role, owned_or_404
 from ..storage import storage
-from ..tasks import import_fieldwork_batch, run_fieldwork_qc
+from ..tasks import import_fieldwork_batch, run_fieldwork_qc, verify_interview_audio
 from .. import fieldwork_qc
 
 router = APIRouter(prefix="/api/v1/fieldwork-qc", tags=["fieldwork-qc"])
@@ -132,6 +132,52 @@ async def import_batch(batch_id: str,
     )
 
 
+@router.post("/batches/{batch_id}/import-from-integration", response_model=FieldworkImportOut)
+def import_from_integration(
+    batch_id: str,
+    body: ImportFromIntegrationIn,
+    user: models.User = Depends(require_role("admin", "researcher")),
+    db: Session = Depends(get_db),
+):
+    """Pull interview rows from a registered Integration into a batch.
+
+    Tenant-scopes both the batch and the integration. Creates an ImportJob
+    and dispatches ``import_fieldwork_batch`` which calls the source provider
+    (mock, surveytogo, dooblo …). Provider errors surface as
+    ``job.status='failed'`` rather than HTTP 500 — callers should inspect the
+    returned ``status`` and ``error`` fields.
+    """
+    batch = owned_or_404(db, FieldworkBatch, batch_id, user.org_id)
+    integration = owned_or_404(db, Integration, body.integration_id, user.org_id)
+
+    job = ImportJob(
+        org_id=user.org_id,
+        project_id=batch.project_id,
+        batch_id=batch_id,
+        integration_id=integration.id,
+        source=integration.kind,
+        status="pending",
+    )
+    db.add(job)
+    batch.status = "importing"
+    db.commit()
+    db.refresh(job)
+
+    job_id = job.id
+    import_fieldwork_batch.delay(job_id)
+
+    # Re-fetch by PK: the task may have rolled back and re-committed (failure path),
+    # which expunges the original ORM instance — db.get() is safe in both outcomes.
+    job = db.get(ImportJob, job_id)
+    return FieldworkImportOut(
+        import_job_id=job.id,
+        batch_id=batch_id,
+        status=job.status,
+        result_summary=job.result_summary,
+        error=job.error,
+    )
+
+
 @router.post("/batches/{batch_id}/run", response_model=FieldworkBatchOut)
 def run_batch(batch_id: str,
               user: models.User = Depends(require_role("admin", "researcher")),
@@ -151,6 +197,31 @@ def get_interview(interview_id: str,
                   db: Session = Depends(get_db)):
     """Interview detail: answers, gps, audio ref, qc_status/score, and flags."""
     iv = owned_or_404(db, Interview, interview_id, user.org_id)
+    flags = (db.query(QCFlag)
+             .filter(QCFlag.interview_id == interview_id)
+             .order_by(QCFlag.severity.desc(), QCFlag.check.asc())
+             .all())
+    out = InterviewDetailOut.model_validate(iv)
+    out.flags = [QCFlagOut.model_validate(f) for f in flags]
+    return out
+
+
+@router.post("/interviews/{interview_id}/verify-audio", response_model=InterviewDetailOut)
+def verify_audio(interview_id: str,
+                 user: models.User = Depends(require_role("admin", "researcher")),
+                 db: Session = Depends(get_db)):
+    """Phase 5: trigger the audio-vs-answers fabrication check for one interview.
+
+    Tenant-scoped (owned_or_404) and role-gated (admin/researcher). Dispatches
+    `verify_interview_audio` which is idempotent and degrades gracefully when no
+    audio is linked. In dev/eager mode the task runs inline so the response
+    already reflects any new `audio_mismatch` flag and the recomputed qc_status.
+    """
+    owned_or_404(db, Interview, interview_id, user.org_id)
+    verify_interview_audio.delay(interview_id)
+    # Re-fetch after the (possibly inline) task so the response is up-to-date.
+    iv = db.get(Interview, interview_id)
+    db.refresh(iv)
     flags = (db.query(QCFlag)
              .filter(QCFlag.interview_id == interview_id)
              .order_by(QCFlag.severity.desc(), QCFlag.check.asc())

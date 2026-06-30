@@ -101,15 +101,18 @@ def _rows_from_bytes(content: bytes, filename: str) -> list[dict]:
     return [dict(r) for r in reader]
 
 
-def parse_fieldwork_rows(content: bytes, filename: str) -> tuple[list[dict], list[dict]]:
+def parse_rows(raw_rows: list[dict]) -> tuple[list[dict], list[dict]]:
     """
-    Parse raw upload bytes into (normalised_rows, skipped).
+    Normalise a list of raw header->value dicts into (normalised_rows, skipped).
 
     Each normalised row is a dict of Interview kwargs (minus org/project/batch
-    ids). `skipped` is a list of {row, external_id, reason} for rows we could
+    ids). ``skipped`` is a list of {row, external_id, reason} for rows we could
     not import (currently: missing external_id).
+
+    This is the portable normalisation core used by both the file-upload path
+    (``parse_fieldwork_rows``) and the integration-fetch path
+    (``import_rows_into_batch``).
     """
-    raw_rows = _rows_from_bytes(content, filename)
     parsed: list[dict] = []
     skipped: list[dict] = []
 
@@ -138,14 +141,33 @@ def parse_fieldwork_rows(content: bytes, filename: str) -> tuple[list[dict], lis
     return parsed, skipped
 
 
-def import_into_batch(db, batch, content: bytes, filename: str) -> dict:
+def parse_fieldwork_rows(content: bytes, filename: str) -> tuple[list[dict], list[dict]]:
     """
-    Parse `content` and create Interview rows under `batch`. Operates on the
-    given db session (commits). Idempotent on (batch_id, external_id). Returns a
-    result_summary dict of stats.
-    """
-    parsed, skipped = parse_fieldwork_rows(content, filename)
+    Parse raw upload bytes into (normalised_rows, skipped).
 
+    Each normalised row is a dict of Interview kwargs (minus org/project/batch
+    ids). `skipped` is a list of {row, external_id, reason} for rows we could
+    not import (currently: missing external_id).
+    """
+    return parse_rows(_rows_from_bytes(content, filename))
+
+
+def _persist(
+    db,
+    batch,
+    parsed: list[dict],
+    skipped: list[dict],
+    source_format: str,
+) -> dict:
+    """Dedup-check parsed rows, create Interview rows, commit, and return stats.
+
+    Idempotent on (batch_id, external_id): rows already present in the batch or
+    duplicated within the current run are appended to ``skipped`` with reason
+    "duplicate external_id in batch".
+
+    ``skipped`` is mutated in-place (rows with missing external_id are already
+    present from ``parse_rows``; this function appends dedup hits).
+    """
     # Existing external_ids already in this batch -> skip (idempotent re-import).
     existing = {
         x[0] for x in
@@ -170,11 +192,38 @@ def import_into_batch(db, batch, content: bytes, filename: str) -> dict:
         imported += 1
     db.commit()
 
-    name = (filename or "").lower()
-    fmt = "xlsx" if name.endswith((".xlsx", ".xlsm", ".xls")) else "csv"
     return {
         "imported": imported,
         "skipped": len(skipped),
         "skipped_reasons": skipped,
-        "source_format": fmt,
+        "source_format": source_format,
     }
+
+
+def import_into_batch(db, batch, content: bytes, filename: str) -> dict:
+    """
+    Parse `content` and create Interview rows under `batch`. Operates on the
+    given db session (commits). Idempotent on (batch_id, external_id). Returns a
+    result_summary dict of stats.
+    """
+    parsed, skipped = parse_fieldwork_rows(content, filename)
+    name = (filename or "").lower()
+    fmt = "xlsx" if name.endswith((".xlsx", ".xlsm", ".xls")) else "csv"
+    return _persist(db, batch, parsed, skipped, fmt)
+
+
+def import_rows_into_batch(
+    db,
+    batch,
+    raw_rows: list[dict],
+    source_format: str = "integration",
+) -> dict:
+    """
+    Normalise ``raw_rows`` (integration-fetched, csv.DictReader-shape dicts) and
+    create Interview rows under ``batch``.
+
+    Idempotent on (batch_id, external_id) — same dedup semantics as
+    ``import_into_batch``.  Returns a result_summary dict of stats.
+    """
+    parsed, skipped = parse_rows(raw_rows)
+    return _persist(db, batch, parsed, skipped, source_format)

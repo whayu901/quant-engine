@@ -88,14 +88,20 @@ def run_fieldwork_qc(batch_id: str):
 
 @celery_app.task(name="import_fieldwork_batch")
 def import_fieldwork_batch(import_job_id: str):
-    """Phase 2: parse an uploaded CSV/XLSX into Interview rows for a batch.
+    """Phase 2: parse an uploaded CSV/XLSX (or integration fetch) into Interview rows.
 
-    The ImportJob carries the storage key in `payload_ref` and the target batch
-    in its `batch_id` column. `result_summary` is output-only import stats.
+    The ImportJob carries either:
+    - ``payload_ref`` (file-upload path): storage key read via ``storage.open``.
+    - ``integration_id`` (integration path): credentials looked up from the
+      Integration row; rows fetched via ``fieldwork_sources.fetch_interviews``.
+
+    ``result_summary`` is output-only import stats. Any provider ValueError or
+    NotImplementedError is caught by the outer except and recorded as
+    job.status="failed" with job.error set to the exception message.
     """
-    from .models_phase1 import ImportJob
+    from .models_phase1 import ImportJob, Integration
     from .models_fieldwork import FieldworkBatch
-    from . import fieldwork_import
+    from . import fieldwork_import, fieldwork_sources
 
     db = SessionLocal()
     try:
@@ -114,9 +120,18 @@ def import_fieldwork_batch(import_job_id: str):
         job.started_at = job.started_at or datetime.utcnow()
         db.commit()
 
-        content = storage.open(job.payload_ref).read()
-        # payload_ref ends with the original filename, so it carries the extension.
-        summary = fieldwork_import.import_into_batch(db, batch, content, job.payload_ref)
+        if job.integration_id:
+            # Integration path: fetch rows from the registered source provider.
+            integration = db.get(Integration, job.integration_id)
+            if not integration:
+                raise ValueError("Integration not found")
+            rows = fieldwork_sources.fetch_interviews(integration, batch)
+            summary = fieldwork_import.import_rows_into_batch(db, batch, rows)
+        else:
+            # File-upload path (unchanged): read bytes from storage, parse.
+            content = storage.open(job.payload_ref).read()
+            # payload_ref ends with the original filename, so it carries the extension.
+            summary = fieldwork_import.import_into_batch(db, batch, content, job.payload_ref)
 
         job.result_summary = summary
         job.status = "completed"
@@ -135,6 +150,131 @@ def import_fieldwork_batch(import_job_id: str):
                 if b:
                     b.status = "failed"
             db.commit()
+    finally:
+        db.close()
+
+
+@celery_app.task(name="verify_interview_audio")
+def verify_interview_audio(interview_id: str):
+    """Phase 5: audio-vs-answers fabrication detector for a single interview.
+
+    Reuses an existing Transcript (with segments) for the linked MediaAsset when
+    one is already present; otherwise creates a Transcript and populates it via
+    the configured ASR provider (default: mock, runs fully offline).
+
+    Idempotent: any prior `audio_mismatch` QCFlag for the interview is deleted
+    before new flags are written, so repeated calls converge to the same result.
+    The interview's qc_status/qc_score is recomputed from ALL non-dismissed
+    flags after the audio check so an audio finding flips the status to "reject"
+    immediately.
+
+    Degrades gracefully:
+    - interview absent: return silently.
+    - interview.media_id is None: return silently (no flag, no error; the
+      interviewer may not have linked audio yet — Phase 3's audio_presence
+      handles the "audio expected but missing" case).
+    - MediaAsset absent: return silently.
+    - Any unexpected error: rollback and swallow (no crash).
+    """
+    from .models_fieldwork import FieldworkBatch, Interview, QCFlag
+    from . import fieldwork_qc
+
+    db = SessionLocal()
+    try:
+        interview = db.get(Interview, interview_id)
+        if not interview:
+            return
+        if interview.media_id is None:
+            return  # no audio linked — not an error
+
+        media = db.get(models.MediaAsset, interview.media_id)
+        if not media:
+            return  # media row missing — degrade silently
+
+        # Transcript reuse: prefer an existing Transcript that already has
+        # segments so we never re-transcribe unnecessarily.
+        existing = (
+            db.query(models.Transcript)
+            .filter(models.Transcript.source_media_id == media.id)
+            .first()
+        )
+
+        if existing and existing.segments:
+            segments = list(existing.segments)
+        else:
+            # No usable transcript — call ASR (mock provider in dev/test).
+            t = models.Transcript(
+                org_id=interview.org_id,
+                project_id=interview.project_id,
+                title=f"Audio QC: {media.filename or media.id}",
+                source_media_id=media.id,
+                transcription_status="running",
+                content="",
+            )
+            db.add(t)
+            db.flush()
+
+            result = transcription.transcribe(storage.local_path(media.storage_key))
+            t.content = result.get("text", "")
+            t.language = result.get("language", "") or ""
+            t.transcription_status = "done"
+
+            for i, seg in enumerate(result.get("segments", [])):
+                db.add(models.TranscriptSegment(
+                    transcript_id=t.id,
+                    idx=i,
+                    speaker=seg.get("speaker"),
+                    start_sec=seg.get("start"),
+                    end_sec=seg.get("end"),
+                    text=seg.get("text"),
+                ))
+            db.flush()
+            db.refresh(t)
+            segments = list(t.segments)
+
+        batch = db.get(FieldworkBatch, interview.batch_id)
+        rules = fieldwork_qc.resolve_rules(batch.rules if batch else None)
+        flags = fieldwork_qc.audio_match_check(interview, segments, rules)
+
+        # Idempotent: drop any prior audio_mismatch flags for this interview.
+        (db.query(QCFlag)
+         .filter(
+             QCFlag.interview_id == interview_id,
+             QCFlag.check == fieldwork_qc.AUDIO_MISMATCH,
+         )
+         .delete(synchronize_session=False))
+
+        for flag in flags:
+            db.add(QCFlag(
+                org_id=interview.org_id,
+                interview_id=interview_id,
+                batch_id=interview.batch_id,
+                check=flag["check"],
+                severity=flag["severity"],
+                detail=flag["detail"],
+                status="open",
+            ))
+
+        # Flush so the newly-written (or deleted) flags are visible to the
+        # recompute query below, even when the session has autoflush=False.
+        db.flush()
+
+        # Recompute qc_status/qc_score from ALL non-dismissed flags so that an
+        # audio finding immediately flips the interview to "reject".
+        all_flags = (
+            db.query(QCFlag)
+            .filter(QCFlag.interview_id == interview_id, QCFlag.status != "dismissed")
+            .all()
+        )
+        qc_status, qc_score = fieldwork_qc.score(
+            [{"check": f.check, "severity": f.severity} for f in all_flags]
+        )
+        interview.qc_status = qc_status
+        interview.qc_score = qc_score
+
+        db.commit()
+    except Exception:  # noqa
+        db.rollback()
     finally:
         db.close()
 

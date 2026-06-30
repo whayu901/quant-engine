@@ -641,3 +641,462 @@ def test_resolve_flag_requires_role(client, viewer_headers, test_project, db):
     resp = client.post(f"/api/v1/fieldwork-qc/flags/{flag.id}/resolve",
                        json={"status": "dismissed"}, headers=viewer_headers)
     assert resp.status_code == 403, resp.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 6 — import-from-integration endpoint
+# ---------------------------------------------------------------------------
+
+class _SharedSessionNoRollback(_SharedSession):
+    """_SharedSession variant that suppresses rollback() in addition to close().
+
+    The task's error handler calls ``db.rollback()`` to discard uncommitted
+    changes.  In the conftest's connection-scoped transaction pattern, SA 2.0
+    issues a bare ``ROLLBACK`` that wipes **all** prior commits on the same
+    connection — including the ImportJob INSERT the endpoint already committed.
+    Suppressing the rollback keeps those rows visible so the task's re-fetch
+    can find the job and commit the "failed" state correctly.
+
+    ``expire_all()`` is called instead so the session reloads attributes from
+    DB on next access (mimicking the normal post-rollback expiry behaviour).
+    Only used in tests that exercise the import failure path.
+    """
+    def rollback(self):
+        self._real.expire_all()
+
+
+@pytest.fixture
+def eager_import_fail(db):
+    """Like eager_import but safe for failure-path tasks that call db.rollback().
+
+    Uses _SharedSessionNoRollback so the task's db.rollback() becomes an
+    expire_all() rather than a connection-level ROLLBACK, which would otherwise
+    undo the ImportJob INSERT and prevent the task from writing the 'failed' state.
+    """
+    from app import tasks
+    from app.celery_app import celery_app
+    prev_eager = celery_app.conf.task_always_eager
+    prev_session = tasks.SessionLocal
+    celery_app.conf.task_always_eager = True
+    celery_app.conf.task_eager_propagates = True
+    tasks.SessionLocal = lambda: _SharedSessionNoRollback(db)
+    yield
+    tasks.SessionLocal = prev_session
+    celery_app.conf.task_always_eager = prev_eager
+
+
+def _make_integration(db, org_id, kind="mock", name="Test Integration", config=None, is_active=True):
+    from app.models_phase1 import Integration
+    integ = Integration(
+        org_id=org_id,
+        kind=kind,
+        name=name,
+        config=config if config is not None else {},
+        is_active=is_active,
+    )
+    db.add(integ); db.commit(); db.refresh(integ)
+    return integ
+
+
+def test_import_from_integration_mock(client, researcher_headers, test_project, eager_import, db):
+    """Mock provider pulls the 52-row fixture: completed, 52 imported, 52 Interview rows."""
+    from app.models_fieldwork import Interview
+
+    batch = _make_batch(db, test_project)
+    integ = _make_integration(db, test_project.org_id, kind="mock")
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/batches/{batch.id}/import-from-integration",
+        json={"integration_id": integ.id},
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "completed"
+    assert body["result_summary"]["imported"] == 52
+    assert body["error"] is None
+
+    count = db.query(Interview).filter(Interview.batch_id == batch.id).count()
+    assert count == 52
+
+
+def test_import_from_integration_idempotent(client, researcher_headers, test_project, eager_import, db):
+    """Repeating the same integration import skips all 52 rows; total stays 52."""
+    from app.models_fieldwork import Interview
+
+    batch = _make_batch(db, test_project)
+    integ = _make_integration(db, test_project.org_id, kind="mock")
+    url = f"/api/v1/fieldwork-qc/batches/{batch.id}/import-from-integration"
+    payload = {"integration_id": integ.id}
+
+    first = client.post(url, json=payload, headers=researcher_headers)
+    assert first.status_code == 200, first.text
+    assert first.json()["result_summary"]["imported"] == 52
+
+    second = client.post(url, json=payload, headers=researcher_headers)
+    assert second.status_code == 200, second.text
+    second_body = second.json()
+    assert second_body["result_summary"]["imported"] == 0
+    assert second_body["result_summary"]["skipped"] == 52
+
+    # Total row count must not double.
+    count = db.query(Interview).filter(Interview.batch_id == batch.id).count()
+    assert count == 52
+
+
+def test_import_from_integration_tenant_404(client, researcher_headers, test_project, db, org_factory, project_factory):
+    """An integration belonging to a foreign org must return 404."""
+    other_org = org_factory.create(db, name="Foreign Org Integration")
+    integ = _make_integration(db, other_org.id, kind="mock")
+    batch = _make_batch(db, test_project)
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/batches/{batch.id}/import-from-integration",
+        json={"integration_id": integ.id},
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 404, resp.text
+
+
+def test_import_from_integration_foreign_batch_404(client, researcher_headers, db, org_factory, project_factory):
+    """A batch belonging to a foreign org must return 404 even with a valid integration."""
+    other_org = org_factory.create(db, name="Foreign Org Batch")
+    other_project = project_factory.create(db, org=other_org)
+    foreign_batch = _make_batch(db, other_project)
+    # Integration belongs to researcher's own org (test_project.org_id is not available here
+    # so we create a local integration under other_org to confirm the batch check fires first).
+    integ = _make_integration(db, other_org.id, kind="mock")
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/batches/{foreign_batch.id}/import-from-integration",
+        json={"integration_id": integ.id},
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 404, resp.text
+
+
+def test_import_from_integration_requires_role(client, viewer_headers, test_project, db):
+    """A viewer cannot trigger an integration import."""
+    batch = _make_batch(db, test_project)
+    integ = _make_integration(db, test_project.org_id, kind="mock")
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/batches/{batch.id}/import-from-integration",
+        json={"integration_id": integ.id},
+        headers=viewer_headers,
+    )
+    assert resp.status_code == 403, resp.text
+
+
+def test_import_from_integration_surveytogo_no_creds(client, researcher_headers, test_project, eager_import_fail, db):
+    """SurveyToGo with missing credentials: clean FieldworkImportOut failure, not HTTP 500."""
+    batch = _make_batch(db, test_project)
+    integ = _make_integration(db, test_project.org_id, kind="surveytogo", config={})
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/batches/{batch.id}/import-from-integration",
+        json={"integration_id": integ.id},
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "failed"
+    assert body["error"] is not None
+    assert "credentials" in body["error"].lower()
+
+
+# ---------------------------------------------------------------------------
+# Phase 5 — audio-vs-answers fabrication detector
+# ---------------------------------------------------------------------------
+#
+# These tests build their OWN fixtures: a MediaAsset + seeded Transcript with
+# TranscriptSegment rows we control.  The eager_import fixture routes the Celery
+# task's SessionLocal to the same in-memory test DB session so no storage file
+# or real ASR provider is needed.
+# ---------------------------------------------------------------------------
+
+def _make_audio_fixtures(db, project, answers, seg_specs, media_duration=600):
+    """Helper: create MediaAsset, FieldworkBatch, Interview, Transcript + segments.
+
+    `seg_specs` is a list of dicts with keys: speaker, start_sec, end_sec, text.
+    Returns (batch, interview, transcript).
+    """
+    from app.models import MediaAsset, Transcript, TranscriptSegment
+    from app.models_fieldwork import FieldworkBatch, Interview
+
+    media = MediaAsset(
+        org_id=project.org_id,
+        project_id=project.id,
+        filename="interview.wav",
+        content_type="audio/wav",
+        kind="audio",
+        storage_key=f"fieldwork/test/{project.id}/interview.wav",
+        duration_sec=float(media_duration),
+    )
+    db.add(media)
+    db.flush()
+
+    batch = FieldworkBatch(
+        org_id=project.org_id,
+        project_id=project.id,
+        name="Phase5 QC Batch",
+        source="excel",
+    )
+    db.add(batch)
+    db.flush()
+
+    iv = Interview(
+        org_id=project.org_id,
+        project_id=project.id,
+        batch_id=batch.id,
+        external_id="P5X1",
+        interviewer_id="INT-P5",
+        duration_sec=media_duration,
+        media_id=media.id,
+        answers=answers,
+        qc_status="pending",
+    )
+    db.add(iv)
+    db.flush()
+
+    transcript = Transcript(
+        org_id=project.org_id,
+        project_id=project.id,
+        title="Phase5 Audio QC",
+        source_media_id=media.id,
+        transcription_status="done",
+        content=" ".join(s["text"] for s in seg_specs),
+    )
+    db.add(transcript)
+    db.flush()
+
+    for i, spec in enumerate(seg_specs):
+        db.add(TranscriptSegment(
+            transcript_id=transcript.id,
+            idx=i,
+            speaker=spec["speaker"],
+            start_sec=spec["start_sec"],
+            end_sec=spec["end_sec"],
+            text=spec["text"],
+        ))
+
+    db.commit()
+    db.refresh(iv)
+    db.refresh(transcript)
+    return batch, iv, transcript
+
+
+# --- (a) supportive: 2 speakers, full span, q9 word heard → no flag ----------
+
+def test_audio_match_check_supportive_no_flag(client, researcher_headers, test_project, eager_import, db):
+    """Good audio: 2 speakers, adequate span, q9 word present → no audio_mismatch."""
+    from app.models_fieldwork import QCFlag
+
+    seg_specs = [
+        {"speaker": "Moderator",   "start_sec": 0.0,   "end_sec": 300.0,
+         "text": "Terima kasih sudah hadir. Apa pendapat Anda tentang produk ini?"},
+        {"speaker": "Responden 1", "start_sec": 300.0, "end_sec": 540.0,
+         "text": "Menurut saya harganya terjangkau dan kualitasnya bagus."},
+    ]
+    # span = 540 - 0 = 540 >= 0.4 * 600 = 240 ✓; 2 speakers ✓; "terjangkau" in text ✓
+    answers = {"q9_brand_word": "terjangkau", "q1_age": "25-34"}
+    batch, iv, _ = _make_audio_fixtures(db, test_project, answers, seg_specs)
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/interviews/{iv.id}/verify-audio",
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    audio_flags = [f for f in body["flags"] if f["check"] == "audio_mismatch"]
+    assert audio_flags == [], "Expected no audio_mismatch flag for clean audio"
+    assert body["qc_status"] != "reject"
+
+
+# --- (b-i) q9 brand word not heard in transcript → flag + reject -------------
+
+def test_audio_match_check_openend_not_heard(client, researcher_headers, test_project, eager_import, db):
+    """q9 brand word absent from transcript → audio_mismatch critical, reject."""
+    from app.models_fieldwork import QCFlag
+
+    seg_specs = [
+        {"speaker": "Moderator",   "start_sec": 0.0,   "end_sec": 300.0,
+         "text": "Terima kasih sudah datang. Apa yang Anda sukai?"},
+        {"speaker": "Responden 1", "start_sec": 300.0, "end_sec": 540.0,
+         "text": "Saya suka produknya, sangat berkualitas tinggi."},
+    ]
+    # "terjangkau" is NOT in any segment text
+    answers = {"q9_brand_word": "terjangkau", "q1_age": "25-34"}
+    batch, iv, _ = _make_audio_fixtures(db, test_project, answers, seg_specs)
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/interviews/{iv.id}/verify-audio",
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    audio_flags = [f for f in body["flags"] if f["check"] == "audio_mismatch"]
+    assert len(audio_flags) == 1
+    assert audio_flags[0]["severity"] == "critical"
+    signals = [r["signal"] for r in audio_flags[0]["detail"]["reasons"]]
+    assert "openend_not_heard" in signals
+    assert body["qc_status"] == "reject"
+
+
+# --- (b-ii) single speaker → flag + reject -----------------------------------
+
+def test_audio_match_check_single_speaker(client, researcher_headers, test_project, eager_import, db):
+    """Only one distinct speaker → audio_mismatch critical, reject."""
+    seg_specs = [
+        {"speaker": "Moderator", "start_sec": 0.0,   "end_sec": 300.0,
+         "text": "Terima kasih. Kata yang menggambarkan produk ini adalah terjangkau."},
+        {"speaker": "Moderator", "start_sec": 300.0, "end_sec": 540.0,
+         "text": "Apakah ada pertanyaan lain? Tidak ada."},
+    ]
+    # 1 speaker < 2 required
+    answers = {"q9_brand_word": "terjangkau", "q1_age": "25-34"}
+    batch, iv, _ = _make_audio_fixtures(db, test_project, answers, seg_specs)
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/interviews/{iv.id}/verify-audio",
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    audio_flags = [f for f in body["flags"] if f["check"] == "audio_mismatch"]
+    assert len(audio_flags) == 1
+    assert audio_flags[0]["severity"] == "critical"
+    signals = [r["signal"] for r in audio_flags[0]["detail"]["reasons"]]
+    assert "too_few_speakers" in signals
+    assert body["qc_status"] == "reject"
+
+
+# --- (b-iii) tiny speech span vs claimed 600s → flag + reject ----------------
+
+def test_audio_match_check_speech_too_short(client, researcher_headers, test_project, eager_import, db):
+    """Speech spans only 10s against a claimed 600s interview → audio_mismatch, reject."""
+    seg_specs = [
+        {"speaker": "Moderator",   "start_sec": 0.0, "end_sec": 5.0,
+         "text": "Halo. Kata kuncinya adalah terjangkau."},
+        {"speaker": "Responden 1", "start_sec": 5.0, "end_sec": 10.0,
+         "text": "Ya betul terjangkau."},
+    ]
+    # span = 10 - 0 = 10 < 0.4 * 600 = 240
+    answers = {"q9_brand_word": "terjangkau", "q1_age": "25-34"}
+    batch, iv, _ = _make_audio_fixtures(db, test_project, answers, seg_specs)
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/interviews/{iv.id}/verify-audio",
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    audio_flags = [f for f in body["flags"] if f["check"] == "audio_mismatch"]
+    assert len(audio_flags) == 1
+    assert audio_flags[0]["severity"] == "critical"
+    signals = [r["signal"] for r in audio_flags[0]["detail"]["reasons"]]
+    assert "speech_too_short" in signals
+    assert body["qc_status"] == "reject"
+
+
+# --- idempotency: POST verify-audio twice → exactly ONE flag -----------------
+
+def test_verify_audio_idempotent(client, researcher_headers, test_project, eager_import, db):
+    """Calling verify-audio twice on the same interview leaves exactly one flag."""
+    from app.models_fieldwork import QCFlag
+
+    seg_specs = [
+        {"speaker": "Moderator",   "start_sec": 0.0, "end_sec": 5.0,
+         "text": "Halo. Produknya bagus."},
+        {"speaker": "Responden 1", "start_sec": 5.0, "end_sec": 10.0,
+         "text": "Iya bagus sekali."},
+    ]
+    # span 10s < 240s → flag expected; q9 word present in transcript
+    answers = {"q9_brand_word": "bagus", "q1_age": "25-34"}
+    batch, iv, _ = _make_audio_fixtures(db, test_project, answers, seg_specs)
+
+    url = f"/api/v1/fieldwork-qc/interviews/{iv.id}/verify-audio"
+    client.post(url, headers=researcher_headers)
+    client.post(url, headers=researcher_headers)
+
+    flags = (
+        db.query(QCFlag)
+        .filter(QCFlag.interview_id == iv.id, QCFlag.check == "audio_mismatch")
+        .all()
+    )
+    assert len(flags) == 1, f"Expected exactly 1 audio_mismatch flag, got {len(flags)}"
+
+
+# --- degrade: interview with media_id=None → 200, no flag, no crash ----------
+
+def test_verify_audio_degrade_no_media(client, researcher_headers, test_project, eager_import, db):
+    """Interview without a linked media asset: endpoint returns 200 with no audio flag."""
+    from app.models_fieldwork import QCFlag
+
+    batch = _make_batch(db, test_project)
+    iv = _make_interview(db, batch, media_id=None, answers={"q9_brand_word": "terjangkau"})
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/interviews/{iv.id}/verify-audio",
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    audio_flags = [f for f in body["flags"] if f["check"] == "audio_mismatch"]
+    assert audio_flags == []
+
+
+# --- tenant isolation: interview in other org → 404 --------------------------
+
+def test_verify_audio_tenant_scoped(client, researcher_headers, db, org_factory, project_factory):
+    """An interview belonging to a different org must return 404."""
+    other_org = org_factory.create(db, name="Other Org Phase5")
+    other_project = project_factory.create(db, org=other_org)
+    batch = _make_batch(db, other_project)
+    iv = _make_interview(db, batch, media_id=None)
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/interviews/{iv.id}/verify-audio",
+        headers=researcher_headers,
+    )
+    assert resp.status_code == 404, resp.text
+
+
+# --- role guard: viewer → 403 ------------------------------------------------
+
+def test_verify_audio_requires_role(client, viewer_headers, test_project, db):
+    """Viewer role must be rejected with 403."""
+    batch = _make_batch(db, test_project)
+    iv = _make_interview(db, batch, media_id=None)
+
+    resp = client.post(
+        f"/api/v1/fieldwork-qc/interviews/{iv.id}/verify-audio",
+        headers=viewer_headers,
+    )
+    assert resp.status_code == 403, resp.text
+
+
+# --- unit: audio_match_check pure function -----------------------------------
+
+def test_audio_match_check_empty_segments_no_flag():
+    """Empty segments list → [] (degrade gracefully; audio_presence owns this case)."""
+    from app import fieldwork_qc
+
+    class _IV:
+        duration_sec = 600
+        answers = {"q9_brand_word": "terjangkau"}
+
+    result = fieldwork_qc.audio_match_check(_IV(), [], fieldwork_qc.DEFAULT_RULES)
+    assert result == []
+
+
+def test_audio_match_check_constants():
+    """AUDIO_MISMATCH is in FABRICATION_CHECKS and SEVERITY maps it as critical."""
+    from app import fieldwork_qc
+
+    assert fieldwork_qc.AUDIO_MISMATCH in fieldwork_qc.FABRICATION_CHECKS
+    assert fieldwork_qc.SEVERITY[fieldwork_qc.AUDIO_MISMATCH] == fieldwork_qc.CRITICAL
