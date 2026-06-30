@@ -136,8 +136,6 @@ export default function RegisterPage() {
     console.log('Social auth with:', provider);
   };
 
-  const control = isRetail ? retailControl : enterpriseControl;
-  const errors = isRetail ? retailErrors : enterpriseErrors;
   const isSubmitting = isRetail ? isRetailSubmitting : isEnterpriseSubmitting;
   const handleFormSubmit = isRetail ? handleRetailSubmit(onRetailSubmit) : handleEnterpriseSubmit(onEnterpriseSubmit);
 
@@ -239,6 +237,138 @@ export default function RegisterPage() {
                   />
                 )}
               />
+
+              {/* Password Fields */}
+              <Controller
+                name="password"
+                control={retailControl}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    label="Password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    error={!!retailErrors.password}
+                    helperText={retailErrors.password?.message}
+                    sx={{
+                      mb: 2,
+                      '& .MuiOutlinedInput-root': { height: 48 },
+                    }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            onClick={() => setShowPassword(!showPassword)}
+                            edge="end"
+                            size="small"
+                          >
+                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                )}
+              />
+
+              <Controller
+                name="confirmPassword"
+                control={retailControl}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    label="Confirm Password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    error={!!retailErrors.confirmPassword}
+                    helperText={retailErrors.confirmPassword?.message}
+                    sx={{
+                      mb: 2,
+                      '& .MuiOutlinedInput-root': { height: 48 },
+                    }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            edge="end"
+                            size="small"
+                          >
+                            {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                )}
+              />
+
+              {/* Password Strength Indicator */}
+              <PasswordStrengthIndicator password={passwordValue} />
+
+              {/* Terms and Privacy */}
+              <Box sx={{ mt: 3, mb: 3 }}>
+                <Controller
+                  name="acceptTerms"
+                  control={retailControl}
+                  render={({ field }) => (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          {...field}
+                          checked={field.value}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          I accept the{' '}
+                          <Link href="/terms" target="_blank" underline="hover">
+                            Terms and Conditions
+                          </Link>
+                        </Typography>
+                      }
+                      sx={{ mb: 1 }}
+                    />
+                  )}
+                />
+                {retailErrors.acceptTerms && (
+                  <Typography variant="caption" color="error" sx={{ display: 'block', ml: 4, mt: -0.5, mb: 1 }}>
+                    {retailErrors.acceptTerms.message}
+                  </Typography>
+                )}
+
+                <Controller
+                  name="acceptPrivacy"
+                  control={retailControl}
+                  render={({ field }) => (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          {...field}
+                          checked={field.value}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          I accept the{' '}
+                          <Link href="/privacy" target="_blank" underline="hover">
+                            Privacy Policy
+                          </Link>
+                        </Typography>
+                      }
+                    />
+                  )}
+                />
+                {retailErrors.acceptPrivacy && (
+                  <Typography variant="caption" color="error" sx={{ display: 'block', ml: 4, mt: 0.5 }}>
+                    {retailErrors.acceptPrivacy.message}
+                  </Typography>
+                )}
+              </Box>
             </>
           )}
 
@@ -351,140 +481,140 @@ export default function RegisterPage() {
                   />
                 )}
               />
+
+              {/* Password Fields */}
+              <Controller
+                name="password"
+                control={enterpriseControl}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    label="Password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    error={!!enterpriseErrors.password}
+                    helperText={enterpriseErrors.password?.message}
+                    sx={{
+                      mb: 2,
+                      '& .MuiOutlinedInput-root': { height: 48 },
+                    }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            onClick={() => setShowPassword(!showPassword)}
+                            edge="end"
+                            size="small"
+                          >
+                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                )}
+              />
+
+              <Controller
+                name="confirmPassword"
+                control={enterpriseControl}
+                render={({ field }) => (
+                  <TextField
+                    {...field}
+                    fullWidth
+                    label="Confirm Password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    autoComplete="new-password"
+                    error={!!enterpriseErrors.confirmPassword}
+                    helperText={enterpriseErrors.confirmPassword?.message}
+                    sx={{
+                      mb: 2,
+                      '& .MuiOutlinedInput-root': { height: 48 },
+                    }}
+                    InputProps={{
+                      endAdornment: (
+                        <InputAdornment position="end">
+                          <IconButton
+                            onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                            edge="end"
+                            size="small"
+                          >
+                            {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                          </IconButton>
+                        </InputAdornment>
+                      ),
+                    }}
+                  />
+                )}
+              />
+
+              {/* Password Strength Indicator */}
+              <PasswordStrengthIndicator password={passwordValue} />
+
+              {/* Terms and Privacy */}
+              <Box sx={{ mt: 3, mb: 3 }}>
+                <Controller
+                  name="acceptTerms"
+                  control={enterpriseControl}
+                  render={({ field }) => (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          {...field}
+                          checked={field.value}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          I accept the{' '}
+                          <Link href="/terms" target="_blank" underline="hover">
+                            Terms and Conditions
+                          </Link>
+                        </Typography>
+                      }
+                      sx={{ mb: 1 }}
+                    />
+                  )}
+                />
+                {enterpriseErrors.acceptTerms && (
+                  <Typography variant="caption" color="error" sx={{ display: 'block', ml: 4, mt: -0.5, mb: 1 }}>
+                    {enterpriseErrors.acceptTerms.message}
+                  </Typography>
+                )}
+
+                <Controller
+                  name="acceptPrivacy"
+                  control={enterpriseControl}
+                  render={({ field }) => (
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          {...field}
+                          checked={field.value}
+                          size="small"
+                        />
+                      }
+                      label={
+                        <Typography variant="body2">
+                          I accept the{' '}
+                          <Link href="/privacy" target="_blank" underline="hover">
+                            Privacy Policy
+                          </Link>
+                        </Typography>
+                      }
+                    />
+                  )}
+                />
+                {enterpriseErrors.acceptPrivacy && (
+                  <Typography variant="caption" color="error" sx={{ display: 'block', ml: 4, mt: 0.5 }}>
+                    {enterpriseErrors.acceptPrivacy.message}
+                  </Typography>
+                )}
+              </Box>
             </>
           )}
-
-          {/* Password Fields (Common) */}
-          <Controller
-            name="password"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                fullWidth
-                label="Password"
-                type={showPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                error={!!errors.password}
-                helperText={errors.password?.message}
-                sx={{
-                  mb: 2,
-                  '& .MuiOutlinedInput-root': { height: 48 },
-                }}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowPassword(!showPassword)}
-                        edge="end"
-                        size="small"
-                      >
-                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            )}
-          />
-
-          <Controller
-            name="confirmPassword"
-            control={control}
-            render={({ field }) => (
-              <TextField
-                {...field}
-                fullWidth
-                label="Confirm Password"
-                type={showConfirmPassword ? 'text' : 'password'}
-                autoComplete="new-password"
-                error={!!errors.confirmPassword}
-                helperText={errors.confirmPassword?.message}
-                sx={{
-                  mb: 2,
-                  '& .MuiOutlinedInput-root': { height: 48 },
-                }}
-                InputProps={{
-                  endAdornment: (
-                    <InputAdornment position="end">
-                      <IconButton
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        edge="end"
-                        size="small"
-                      >
-                        {showConfirmPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            )}
-          />
-
-          {/* Password Strength Indicator */}
-          <PasswordStrengthIndicator password={passwordValue} />
-
-          {/* Terms and Privacy */}
-          <Box sx={{ mt: 3, mb: 3 }}>
-            <Controller
-              name="acceptTerms"
-              control={control}
-              render={({ field }) => (
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      {...field}
-                      checked={field.value}
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">
-                      I accept the{' '}
-                      <Link href="/terms" target="_blank" underline="hover">
-                        Terms and Conditions
-                      </Link>
-                    </Typography>
-                  }
-                  sx={{ mb: 1 }}
-                />
-              )}
-            />
-            {errors.acceptTerms && (
-              <Typography variant="caption" color="error" sx={{ display: 'block', ml: 4, mt: -0.5, mb: 1 }}>
-                {errors.acceptTerms.message}
-              </Typography>
-            )}
-
-            <Controller
-              name="acceptPrivacy"
-              control={control}
-              render={({ field }) => (
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      {...field}
-                      checked={field.value}
-                      size="small"
-                    />
-                  }
-                  label={
-                    <Typography variant="body2">
-                      I accept the{' '}
-                      <Link href="/privacy" target="_blank" underline="hover">
-                        Privacy Policy
-                      </Link>
-                    </Typography>
-                  }
-                />
-              )}
-            />
-            {errors.acceptPrivacy && (
-              <Typography variant="caption" color="error" sx={{ display: 'block', ml: 4, mt: 0.5 }}>
-                {errors.acceptPrivacy.message}
-              </Typography>
-            )}
-          </Box>
 
           {/* Submit Button */}
           <Button

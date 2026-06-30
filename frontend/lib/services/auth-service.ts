@@ -10,7 +10,6 @@ import type {
   ResetPasswordResponse,
   VerifyEmailRequest,
   VerifyEmailResponse,
-  RefreshTokenRequest,
   RefreshTokenResponse,
   SocialAuthProvider,
   SocialAuthResponse,
@@ -48,7 +47,9 @@ class AuthService {
         email: credentials.email,
         name: '',
         role: 'researcher',
-        accountType: 'retail'
+        accountType: 'retail',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       }
     };
 
@@ -77,7 +78,7 @@ class AuthService {
     } else {
       // For enterprise, use admin email and organization name
       requestData = {
-        email: data.adminEmail || data.email,
+        email: data.adminEmail,
         password: data.password,
         org_name: data.organizationName
       };
@@ -92,10 +93,12 @@ class AuthService {
       tokenType: 'bearer',
       user: {
         id: 'new-user',
-        email: data.accountType === 'retail' ? data.email : (data.adminEmail || data.email),
+        email: data.accountType === 'retail' ? data.email : data.adminEmail,
         name: data.accountType === 'retail' ? data.name : data.adminName,
         role: 'admin', // New registrations are admin of their org
-        accountType: data.accountType
+        accountType: data.accountType,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
       },
       message: 'Registration successful'
     };
@@ -104,21 +107,6 @@ class AuthService {
     this.setAuthData(registerResponse);
 
     return registerResponse;
-  }
-
-  /**
-   * Map frontend company size to backend format
-   */
-  private mapCompanySize(size: string): string {
-    const sizeMap: Record<string, string> = {
-      '1-10': 'small',
-      '11-50': 'small',
-      '51-200': 'medium',
-      '201-500': 'large',
-      '501-1000': 'large',
-      '1000+': 'enterprise'
-    };
-    return sizeMap[size] || 'small';
   }
 
   /**

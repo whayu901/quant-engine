@@ -1,6 +1,5 @@
 'use client';
 
-import { useState, useEffect } from 'react';
 import { Box, Container, Typography, Button, Stack, Grid } from '@mui/material';
 import { motion, useScroll, useTransform } from 'framer-motion';
 import { PlayArrow, TrendingUp } from '@mui/icons-material';
@@ -18,7 +17,6 @@ export default function HeroSection() {
 
   const { scrollY } = useScroll();
   const y = useTransform(scrollY, [0, 500], [0, 150]);
-  const opacity = useTransform(scrollY, [0, 300], [1, 0]);
 
   return (
     <Box

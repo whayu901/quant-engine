@@ -5,7 +5,6 @@ import { Menu as MenuIcon, Close } from '@mui/icons-material';
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 const MotionAppBar = motion(AppBar);
 
