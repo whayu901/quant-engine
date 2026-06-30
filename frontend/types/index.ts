@@ -4,6 +4,7 @@
 export * from './auth';
 export * from './api';
 export * from './collaboration';
+export * from './fieldwork';
 
 // Legacy types - kept for backward compatibility
 export interface ApiError {

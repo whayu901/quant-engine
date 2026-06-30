@@ -32,7 +32,7 @@
     ],
     /* Path Mapping */
     "baseUrl": ".",
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "paths": {
       "@/*": ["./*"],
       "@/components/*": ["./components/*"],

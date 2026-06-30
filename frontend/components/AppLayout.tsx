@@ -28,6 +28,7 @@ import {
   AdminPanelSettings,
   Logout,
   Person,
+  FactCheck,
 } from '@mui/icons-material';
 import { useAppDispatch, useAppSelector } from '@/store/hooks';
 import { clearUser } from '@/store/slices/authSlice';
@@ -44,6 +45,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { title: 'Dashboard', path: '/dashboard', icon: <Dashboard /> },
   { title: 'Projects', path: '/projects', icon: <FolderOpen /> },
+  { title: 'Fieldwork QC', path: '/fieldwork-qc', icon: <FactCheck /> },
   { title: 'Analysis', path: '/analysis', icon: <Analytics /> },
   { title: 'Settings', path: '/settings', icon: <Settings /> },
   { title: 'Admin', path: '/admin', icon: <AdminPanelSettings />, requiresAdmin: true },

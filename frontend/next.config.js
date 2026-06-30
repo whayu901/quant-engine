@@ -2,6 +2,8 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
+  // react-leaflet v4 ships ESM; Next 13 needs it (and its core) transpiled.
+  transpilePackages: ['react-leaflet', '@react-leaflet/core'],
   compiler: {
     emotion: true,
   },
