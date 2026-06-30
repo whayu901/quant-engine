@@ -6,6 +6,61 @@ from . import transcription
 from .storage import storage
 
 
+@celery_app.task(name="import_fieldwork_batch")
+def import_fieldwork_batch(import_job_id: str):
+    """Phase 2: parse an uploaded CSV/XLSX into Interview rows for a batch.
+
+    The ImportJob carries the storage key in `payload_ref` and the target
+    batch id in `result_summary["batch_id"]` (seeded by the import endpoint).
+    """
+    from .models_phase1 import ImportJob
+    from .models_fieldwork import FieldworkBatch
+    from . import fieldwork_import
+
+    db = SessionLocal()
+    try:
+        job = db.get(ImportJob, import_job_id)
+        if not job:
+            return
+        batch_id = (job.result_summary or {}).get("batch_id")
+        batch = db.get(FieldworkBatch, batch_id) if batch_id else None
+        if not batch:
+            job.status = "failed"
+            job.error = "Batch not found for import job"
+            job.completed_at = datetime.utcnow()
+            db.commit()
+            return
+
+        job.status = "running"
+        job.started_at = job.started_at or datetime.utcnow()
+        db.commit()
+
+        content = storage.open(job.payload_ref).read()
+        summary = fieldwork_import.import_into_batch(
+            db, batch, content, (job.result_summary or {}).get("filename", ""))
+
+        job.result_summary = {**(job.result_summary or {}), **summary}
+        job.status = "completed"
+        job.completed_at = datetime.utcnow()
+        batch.status = "pending"  # imported; awaiting QC run
+        db.commit()
+    except Exception as e:  # noqa
+        db.rollback()
+        job = db.get(ImportJob, import_job_id)
+        if job:
+            job.status = "failed"
+            job.error = str(e)[:1000]
+            job.completed_at = datetime.utcnow()
+            batch_id = (job.result_summary or {}).get("batch_id")
+            if batch_id:
+                b = db.get(FieldworkBatch, batch_id)
+                if b:
+                    b.status = "failed"
+            db.commit()
+    finally:
+        db.close()
+
+
 @celery_app.task(name="transcribe_media")
 def transcribe_media(transcript_id: str):
     """Phase 1: media -> transcript. Runs ASR + diarization, stores segments."""

@@ -14,10 +14,13 @@ from . import models_phase3  # noqa: F401  (register phase 3 models)
 from . import models_phase4  # noqa: F401  (register phase 4 models)
 from . import models_phase5  # noqa: F401  (register phase 5 models)
 from . import models_enterprise  # noqa: F401  (register enterprise models)
+from . import models_phase1  # noqa: F401  (register ImportJob / Integration / Market)
+from . import models_fieldwork  # noqa: F401  (register fieldwork QC models)
 # from . import models_phase6  # noqa: F401  (temporarily disabled - duplicate table issue)
 from .routers import (
     auth, projects, transcripts, analyses, usage, chat, admin,
-    quantitative, rag_config, analysis, collaboration, websocket
+    quantitative, rag_config, analysis, collaboration, websocket,
+    fieldwork_qc
 )
 # enterprise router temporarily disabled due to import issue
 # from .routers import enterprise
@@ -69,7 +72,7 @@ app.add_middleware(
 
 routers = [
     auth, projects, transcripts, analyses, analysis, usage, chat, admin,
-    quantitative, rag_config, collaboration, websocket
+    quantitative, rag_config, collaboration, websocket, fieldwork_qc
     # enterprise temporarily disabled due to import issue
 ]
 if has_clips:
