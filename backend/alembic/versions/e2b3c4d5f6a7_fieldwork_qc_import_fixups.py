@@ -54,9 +54,11 @@ def upgrade() -> None:
             sa.Column("started_at", sa.DateTime(), nullable=True),
             sa.Column("completed_at", sa.DateTime(), nullable=True),
             sa.Column("created_at", sa.DateTime(), nullable=True),
-            sa.ForeignKeyConstraint(["org_id"], ["orgs.id"]),
-            sa.ForeignKeyConstraint(["project_id"], ["projects.id"]),
-            sa.ForeignKeyConstraint(["batch_id"], ["fieldwork_batches.id"]),
+            # Named so later SQLite batch_alter_table (e.g. the schema
+            # reconciliation adding the integration_id FK) can reflect them.
+            sa.ForeignKeyConstraint(["org_id"], ["orgs.id"], name="fk_import_jobs_org"),
+            sa.ForeignKeyConstraint(["project_id"], ["projects.id"], name="fk_import_jobs_project"),
+            sa.ForeignKeyConstraint(["batch_id"], ["fieldwork_batches.id"], name="fk_import_jobs_batch"),
             sa.PrimaryKeyConstraint("id"),
         )
     elif "batch_id" not in _columns(inspector, "import_jobs"):
@@ -73,9 +75,10 @@ def downgrade() -> None:
         if "audio_ref" in _columns(inspector, "interviews"):
             batch_op.drop_column("audio_ref")
 
-    # Leave the import_jobs table in place (it predates this migration's
-    # ownership); only remove the column we added.
-    if "import_jobs" in inspector.get_table_names() and \
-            "batch_id" in _columns(inspector, "import_jobs"):
-        with op.batch_alter_table("import_jobs") as batch_op:
-            batch_op.drop_column("batch_id")
+    # In the canonical chain this migration is what creates import_jobs (no
+    # earlier migration does), so its downgrade drops the table — keeping
+    # `downgrade base` clean. If a legacy DB had import_jobs before this revision
+    # the upgrade only added a column; dropping the table on the way down is
+    # acceptable since downgrade is a teardown path.
+    if "import_jobs" in inspector.get_table_names():
+        op.drop_table("import_jobs")

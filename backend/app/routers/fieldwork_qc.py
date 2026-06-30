@@ -14,15 +14,16 @@ from sqlalchemy import func
 
 from .. import models, schemas
 from ..models import _uid
-from ..models_fieldwork import FieldworkBatch, Interview
+from ..models_fieldwork import FieldworkBatch, Interview, QCFlag
 from ..models_phase1 import ImportJob
 from ..schemas_fieldwork import (
     FieldworkBatchIn, FieldworkBatchOut, InterviewOut, FieldworkImportOut,
+    InterviewDetailOut, QCFlagOut,
 )
 from ..database import get_db
 from ..deps import get_current_user, require_role, owned_or_404
 from ..storage import storage
-from ..tasks import import_fieldwork_batch
+from ..tasks import import_fieldwork_batch, run_fieldwork_qc
 
 router = APIRouter(prefix="/api/v1/fieldwork-qc", tags=["fieldwork-qc"])
 
@@ -127,6 +128,34 @@ async def import_batch(batch_id: str,
         result_summary=job.result_summary,
         error=job.error,
     )
+
+
+@router.post("/batches/{batch_id}/run", response_model=FieldworkBatchOut)
+def run_batch(batch_id: str,
+              user: models.User = Depends(require_role("admin", "researcher")),
+              db: Session = Depends(get_db)):
+    """Run the heuristic QC detectors over the batch (async, idempotent)."""
+    batch = owned_or_404(db, FieldworkBatch, batch_id, user.org_id)
+    batch.status = "running"
+    db.commit()
+    run_fieldwork_qc.delay(batch_id)
+    db.refresh(batch)
+    return batch
+
+
+@router.get("/interviews/{interview_id}", response_model=InterviewDetailOut)
+def get_interview(interview_id: str,
+                  user: models.User = Depends(get_current_user),
+                  db: Session = Depends(get_db)):
+    """Interview detail: answers, gps, audio ref, qc_status/score, and flags."""
+    iv = owned_or_404(db, Interview, interview_id, user.org_id)
+    flags = (db.query(QCFlag)
+             .filter(QCFlag.interview_id == interview_id)
+             .order_by(QCFlag.severity.desc(), QCFlag.check.asc())
+             .all())
+    out = InterviewDetailOut.model_validate(iv)
+    out.flags = [QCFlagOut.model_validate(f) for f in flags]
+    return out
 
 
 @router.get("/batches/{batch_id}/interviews",

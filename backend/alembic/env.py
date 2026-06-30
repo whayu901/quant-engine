@@ -13,8 +13,17 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from app.database import Base
 from app.config import settings
-from app import models  # Import all models
-from app import models_fieldwork  # noqa: F401  (register Fieldwork QC tables)
+# Import every model module the app registers so target_metadata is complete
+# for autogenerate (mirrors app/main.py). Without this, autogenerate would see a
+# partial model set and propose dropping real tables.
+from app import models  # noqa: F401
+from app import models_phase1  # noqa: F401
+from app import models_phase2  # noqa: F401
+from app import models_phase3  # noqa: F401
+from app import models_phase4  # noqa: F401
+from app import models_phase5  # noqa: F401
+from app import models_enterprise  # noqa: F401
+from app import models_fieldwork  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -77,7 +86,11 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            # SQLite can't ALTER (add FK / drop column / etc); batch mode recreates
+            # the table instead. No-op on Postgres, which supports ALTER natively.
+            render_as_batch=connection.dialect.name == "sqlite",
         )
 
         with context.begin_transaction():

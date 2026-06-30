@@ -6,6 +6,72 @@ from . import transcription
 from .storage import storage
 
 
+@celery_app.task(name="run_fieldwork_qc")
+def run_fieldwork_qc(batch_id: str):
+    """Phase 3: run heuristic detectors over a batch's interviews.
+
+    Idempotent — clears prior QCFlags and resets qc_status before recomputing,
+    so a re-run never double-counts. Writes QCFlags, sets qc_status/qc_score per
+    interview, and rolls up batch.result_summary (counts per check + per status).
+    """
+    from .models_fieldwork import FieldworkBatch, Interview, QCFlag
+    from . import fieldwork_qc
+
+    db = SessionLocal()
+    try:
+        batch = db.get(FieldworkBatch, batch_id)
+        if not batch:
+            return
+        batch.status = "running"
+        db.commit()
+
+        interviews = db.query(Interview).filter(Interview.batch_id == batch_id).all()
+
+        # Idempotent reset: drop prior flags + reset statuses for a clean recompute.
+        db.query(QCFlag).filter(QCFlag.batch_id == batch_id).delete(synchronize_session=False)
+        for iv in interviews:
+            iv.qc_status = "pending"
+            iv.qc_score = None
+        db.flush()
+
+        rules = fieldwork_qc.resolve_rules(batch.rules)
+        flags_by_iv = {}
+        by_check = {}
+        for iv, flag in fieldwork_qc.run_all_detectors(interviews, rules):
+            flags_by_iv.setdefault(id(iv), []).append(flag)
+            by_check[flag["check"]] = by_check.get(flag["check"], 0) + 1
+            db.add(QCFlag(
+                org_id=iv.org_id, interview_id=iv.id, batch_id=batch_id,
+                check=flag["check"], severity=flag["severity"],
+                detail=flag["detail"], status="open",
+            ))
+
+        by_status = {"pass": 0, "flag": 0, "review": 0, "reject": 0}
+        for iv in interviews:
+            status, qc_score = fieldwork_qc.score(flags_by_iv.get(id(iv), []))
+            iv.qc_status = status
+            iv.qc_score = qc_score
+            by_status[status] = by_status.get(status, 0) + 1
+
+        batch.result_summary = {
+            "interviews": len(interviews),
+            "by_check": by_check,
+            "by_status": by_status,
+            "flags_total": sum(by_check.values()),
+        }
+        batch.status = "completed"
+        db.commit()
+    except Exception as e:  # noqa
+        db.rollback()
+        b = db.get(FieldworkBatch, batch_id)
+        if b:
+            b.status = "failed"
+            b.result_summary = {**(b.result_summary or {}), "error": str(e)[:1000]}
+            db.commit()
+    finally:
+        db.close()
+
+
 @celery_app.task(name="import_fieldwork_batch")
 def import_fieldwork_batch(import_job_id: str):
     """Phase 2: parse an uploaded CSV/XLSX into Interview rows for a batch.

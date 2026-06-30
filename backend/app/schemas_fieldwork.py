@@ -59,3 +59,21 @@ class FieldworkImportOut(BaseModel):
     status: str                                  # pending | running | completed | failed
     result_summary: Optional[Dict[str, Any]] = None
     error: Optional[str] = None
+
+
+class QCFlagOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    interview_id: str
+    batch_id: str
+    check: str
+    severity: str                                # info | warn | critical
+    detail: Optional[Dict[str, Any]] = None
+    status: str                                  # open | confirmed | dismissed
+    reviewer_id: Optional[str] = None
+    created_at: datetime
+
+
+class InterviewDetailOut(InterviewOut):
+    """Interview detail with its QC flags."""
+    flags: list[QCFlagOut] = []

@@ -2,13 +2,27 @@
 
 Phase 1 — batch CRUD + tenancy.
 Phase 2 — CSV/XLSX import → Interview rows.
+Phase 3 — heuristic detectors + scoring + run task.
 """
 
+import csv
 import pytest
+from collections import Counter, defaultdict
 from pathlib import Path
 
 FIXTURES = Path(__file__).parent / "fixtures"
 SAMPLE_CSV = FIXTURES / "fieldwork_qc_sample.csv"
+EXPECTED_CSV = FIXTURES / "fieldwork_qc_expected.csv"
+
+
+def _load_expected() -> dict:
+    """external_id -> set(check) parsed from the expected fixture ('(clean)' -> set())."""
+    out = {}
+    with open(EXPECTED_CSV, newline="") as f:
+        for row in csv.DictReader(f):
+            raw = row["expected_checks"].strip()
+            out[row["external_id"]] = set() if raw == "(clean)" else set(raw.split("|"))
+    return out
 
 
 def _make_batch(db, project, **kwargs):
@@ -343,3 +357,151 @@ def test_list_interviews_tenant_scoped(client, researcher_headers, db, org_facto
         headers=researcher_headers,
     )
     assert resp.status_code == 404, resp.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 3 — detectors + scoring
+# ---------------------------------------------------------------------------
+
+EXPECTED_TOTALS = {
+    "speeder": 14, "straightlining": 13, "gps_identical": 12, "audio_presence": 9,
+    "duplicate_openend": 8, "cadence_impossible": 8, "eligibility": 3,
+    "gps_out_of_area": 2, "too_long": 1,
+}
+
+
+def _import_sample(db, project, **batch_kwargs):
+    from app.fieldwork_import import import_into_batch
+    from app.models_fieldwork import Interview
+    batch = _make_batch(db, project, **batch_kwargs)
+    import_into_batch(db, batch, SAMPLE_CSV.read_bytes(), "fieldwork_qc_sample.csv")
+    interviews = db.query(Interview).filter(Interview.batch_id == batch.id).all()
+    return batch, interviews
+
+
+def test_detectors_match_expected_per_row(db, test_project):
+    """THE measurement: per external_id, detected check-set == expected fixture."""
+    from app import fieldwork_qc
+
+    batch, interviews = _import_sample(db, test_project)
+    rules = fieldwork_qc.resolve_rules(batch.rules)
+
+    got = {iv.external_id: set() for iv in interviews}
+    for iv, flag in fieldwork_qc.run_all_detectors(interviews, rules):
+        got[iv.external_id].add(flag["check"])
+
+    assert got == _load_expected()
+
+
+def test_detector_totals_per_check(db, test_project):
+    from app import fieldwork_qc
+
+    batch, interviews = _import_sample(db, test_project)
+    rules = fieldwork_qc.resolve_rules(batch.rules)
+    counts = Counter(flag["check"] for _, flag in fieldwork_qc.run_all_detectors(interviews, rules))
+    assert dict(counts) == EXPECTED_TOTALS
+
+
+def test_clean_rows_have_no_flags_and_pass(db, test_project):
+    from app import fieldwork_qc
+
+    batch, interviews = _import_sample(db, test_project)
+    rules = fieldwork_qc.resolve_rules(batch.rules)
+    expected = _load_expected()
+    clean_ids = {ext for ext, checks in expected.items() if not checks}
+    assert len(clean_ids) == 24
+
+    flags_by_ext = defaultdict(list)
+    for iv, flag in fieldwork_qc.run_all_detectors(interviews, rules):
+        flags_by_ext[iv.external_id].append(flag)
+
+    for iv in interviews:
+        if iv.external_id in clean_ids:
+            assert flags_by_ext[iv.external_id] == []
+            status, qc_score = fieldwork_qc.score([])
+            assert status == "pass"
+            assert qc_score == 1.0
+
+
+def test_int007_scores_reject(db, test_project):
+    from app import fieldwork_qc
+
+    batch, interviews = _import_sample(db, test_project)
+    rules = fieldwork_qc.resolve_rules(batch.rules)
+    flags_by_ext = defaultdict(list)
+    for iv, flag in fieldwork_qc.run_all_detectors(interviews, rules):
+        flags_by_ext[iv.external_id].append(flag)
+
+    for iv in interviews:
+        if iv.interviewer_id == "INT-007":
+            status, _ = fieldwork_qc.score(flags_by_ext[iv.external_id])
+            assert status == "reject", iv.external_id
+
+
+def test_run_task_writes_flags_and_status(client, researcher_headers, test_project, eager_import, db):
+    """Full run via the task: QCFlags persisted, statuses set, summary rolled up."""
+    from app.models_fieldwork import QCFlag, Interview
+
+    batch, _ = _import_sample(db, test_project)
+
+    resp = client.post(f"/api/v1/fieldwork-qc/batches/{batch.id}/run", headers=researcher_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "completed"
+
+    # Flags persisted with the right per-check totals.
+    flags = db.query(QCFlag).filter(QCFlag.batch_id == batch.id).all()
+    assert dict(Counter(f.check for f in flags)) == EXPECTED_TOTALS
+
+    # Statuses set per interview.
+    interviews = db.query(Interview).filter(Interview.batch_id == batch.id).all()
+    by_ext = {iv.external_id: iv for iv in interviews}
+    expected = _load_expected()
+    for ext, checks in expected.items():
+        if not checks:
+            assert by_ext[ext].qc_status == "pass"
+    assert all(by_ext[f"R10{n}"].qc_status == "reject" for n in range(42, 50))  # INT-007
+
+    # result_summary rolled up.
+    resp = client.get(f"/api/v1/fieldwork-qc/batches/{batch.id}", headers=researcher_headers)
+    summary = resp.json()["result_summary"]
+    assert summary["by_check"] == EXPECTED_TOTALS
+    assert summary["by_status"]["pass"] == 24
+    assert summary["interviews"] == 52
+
+
+def test_run_is_idempotent(client, researcher_headers, test_project, eager_import, db):
+    from app.models_fieldwork import QCFlag
+
+    batch, _ = _import_sample(db, test_project)
+
+    client.post(f"/api/v1/fieldwork-qc/batches/{batch.id}/run", headers=researcher_headers)
+    first = db.query(QCFlag).filter(QCFlag.batch_id == batch.id).count()
+
+    client.post(f"/api/v1/fieldwork-qc/batches/{batch.id}/run", headers=researcher_headers)
+    second = db.query(QCFlag).filter(QCFlag.batch_id == batch.id).count()
+
+    assert first == second == sum(EXPECTED_TOTALS.values())
+
+
+def test_get_interview_detail_includes_flags(client, researcher_headers, test_project, eager_import, db):
+    from app.models_fieldwork import Interview
+
+    batch, _ = _import_sample(db, test_project)
+    client.post(f"/api/v1/fieldwork-qc/batches/{batch.id}/run", headers=researcher_headers)
+
+    iv = (db.query(Interview)
+          .filter(Interview.batch_id == batch.id, Interview.external_id == "R1042")
+          .one())
+    resp = client.get(f"/api/v1/fieldwork-qc/interviews/{iv.id}", headers=researcher_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["qc_status"] == "reject"
+    checks = {fl["check"] for fl in body["flags"]}
+    assert checks == {"speeder", "straightlining", "gps_identical",
+                      "duplicate_openend", "audio_presence", "cadence_impossible"}
+
+
+def test_run_requires_role(client, viewer_headers, test_project, db):
+    batch = _make_batch(db, test_project)
+    resp = client.post(f"/api/v1/fieldwork-qc/batches/{batch.id}/run", headers=viewer_headers)
+    assert resp.status_code == 403, resp.text
