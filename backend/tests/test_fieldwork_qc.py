@@ -33,6 +33,14 @@ def _make_batch(db, project, **kwargs):
     return batch
 
 
+def _make_interview(db, batch, **kwargs):
+    from app.models_fieldwork import Interview
+    iv = Interview(org_id=batch.org_id, project_id=batch.project_id, batch_id=batch.id,
+                   external_id="X1", interviewer_id="INT-X", qc_status="flag", **kwargs)
+    db.add(iv); db.commit(); db.refresh(iv)
+    return iv
+
+
 class _SharedSession:
     """Proxy that delegates to the test session but never closes it.
 
@@ -504,4 +512,132 @@ def test_get_interview_detail_includes_flags(client, researcher_headers, test_pr
 def test_run_requires_role(client, viewer_headers, test_project, db):
     batch = _make_batch(db, test_project)
     resp = client.post(f"/api/v1/fieldwork-qc/batches/{batch.id}/run", headers=viewer_headers)
+    assert resp.status_code == 403, resp.text
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — interviewer anomaly, report, reviewer console
+# ---------------------------------------------------------------------------
+
+def _run_batch(client, headers, db, project):
+    batch, _ = _import_sample(db, project)
+    resp = client.post(f"/api/v1/fieldwork-qc/batches/{batch.id}/run", headers=headers)
+    assert resp.status_code == 200, resp.text
+    return batch
+
+
+def test_interviewer_scores(client, researcher_headers, test_project, eager_import, db):
+    from app.models_fieldwork import InterviewerScore
+    batch = _run_batch(client, researcher_headers, db, test_project)
+
+    scores = db.query(InterviewerScore).filter(InterviewerScore.batch_id == batch.id).all()
+    assert len(scores) == 7
+    assert sum(s.n_interviews for s in scores) == 52
+
+    ranked = sorted(scores, key=lambda s: s.anomaly_score, reverse=True)
+    assert ranked[0].interviewer_id == "INT-007"
+    # The three clean interviewers sit at the bottom.
+    bottom3 = {s.interviewer_id for s in ranked[-3:]}
+    assert bottom3 == {"INT-001", "INT-002", "INT-003"}
+
+    # Endpoint returns the same ranking, most-anomalous first.
+    resp = client.get(f"/api/v1/fieldwork-qc/batches/{batch.id}/interviewers", headers=researcher_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert [r["interviewer_id"] for r in body][0] == "INT-007"
+    assert [r["anomaly_score"] for r in body] == sorted(
+        [r["anomaly_score"] for r in body], reverse=True)
+
+
+def test_report_axes(client, researcher_headers, test_project, eager_import, db):
+    batch = _run_batch(client, researcher_headers, db, test_project)
+    resp = client.get(f"/api/v1/fieldwork-qc/batches/{batch.id}/report", headers=researcher_headers)
+    assert resp.status_code == 200, resp.text
+    r = resp.json()
+    assert r["approved"] == 24
+    assert r["fraud_rejected"] == 12
+    assert r["ineligible"] == 3
+    assert r["needs_review"] == 13
+    assert r["approved"] + r["fraud_rejected"] + r["ineligible"] + r["needs_review"] == 52
+    # Per-check breakdown + per-interviewer summary + trend present.
+    assert r["by_check"] == EXPECTED_TOTALS
+    assert len(r["interviewers"]) == 7
+    assert r["interviewers"][0]["interviewer_id"] == "INT-007"
+    assert len(r["trend"]) >= 1
+    assert all({"time", "approved", "rejected"} <= set(p) for p in r["trend"])
+
+
+def test_resolve_flag_dismiss_all_makes_pass(client, researcher_headers, test_project, eager_import, db):
+    from app.models_fieldwork import Interview, QCFlag
+    batch = _run_batch(client, researcher_headers, db, test_project)
+
+    # R1025 has exactly one flag (audio_presence) -> qc_status flag.
+    iv = (db.query(Interview)
+          .filter(Interview.batch_id == batch.id, Interview.external_id == "R1025").one())
+    assert iv.qc_status == "flag"
+    flag = db.query(QCFlag).filter(QCFlag.interview_id == iv.id).one()
+
+    resp = client.post(f"/api/v1/fieldwork-qc/flags/{flag.id}/resolve",
+                       json={"status": "dismissed", "note": "verified by phone"},
+                       headers=researcher_headers)
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "dismissed"
+    assert body["reviewer_id"] is not None
+    assert body["detail"]["reviewer_note"] == "verified by phone"
+
+    db.refresh(iv)
+    assert iv.qc_status == "pass"  # all flags dismissed -> pass
+
+
+def test_resolve_flag_partial_keeps_reject(client, researcher_headers, test_project, eager_import, db):
+    from app.models_fieldwork import Interview, QCFlag
+    batch = _run_batch(client, researcher_headers, db, test_project)
+
+    iv = (db.query(Interview)
+          .filter(Interview.batch_id == batch.id, Interview.external_id == "R1042").one())
+    flags = db.query(QCFlag).filter(QCFlag.interview_id == iv.id).all()
+    assert len(flags) == 6
+
+    # Dismiss one (audio_presence) — fabrication flags remain -> still reject.
+    audio_flag = next(f for f in flags if f.check == "audio_presence")
+    resp = client.post(f"/api/v1/fieldwork-qc/flags/{audio_flag.id}/resolve",
+                       json={"status": "dismissed"}, headers=researcher_headers)
+    assert resp.status_code == 200, resp.text
+    db.refresh(iv)
+    assert iv.qc_status == "reject"
+
+
+def test_rerun_idempotent_interviewer_scores(client, researcher_headers, test_project, eager_import, db):
+    from app.models_fieldwork import InterviewerScore
+    batch = _run_batch(client, researcher_headers, db, test_project)
+    client.post(f"/api/v1/fieldwork-qc/batches/{batch.id}/run", headers=researcher_headers)
+    n = db.query(InterviewerScore).filter(InterviewerScore.batch_id == batch.id).count()
+    assert n == 7  # not 14
+
+
+def test_resolve_flag_tenant_scoped(client, researcher_headers, db, org_factory, project_factory):
+    from app.models_fieldwork import QCFlag
+    other_org = org_factory.create(db, name="Other Org R")
+    other_project = project_factory.create(db, org=other_org)
+    batch = _make_batch(db, other_project)
+    iv = _make_interview(db, batch)
+    flag = QCFlag(org_id=other_org.id, interview_id=iv.id, batch_id=batch.id,
+                  check="speeder", severity="warn", status="open")
+    db.add(flag); db.commit(); db.refresh(flag)
+
+    resp = client.post(f"/api/v1/fieldwork-qc/flags/{flag.id}/resolve",
+                       json={"status": "dismissed"}, headers=researcher_headers)
+    assert resp.status_code == 404, resp.text
+
+
+def test_resolve_flag_requires_role(client, viewer_headers, test_project, db):
+    from app.models_fieldwork import QCFlag
+    batch = _make_batch(db, test_project)
+    iv = _make_interview(db, batch)
+    flag = QCFlag(org_id=test_project.org_id, interview_id=iv.id, batch_id=batch.id,
+                  check="speeder", severity="warn", status="open")
+    db.add(flag); db.commit(); db.refresh(flag)
+    resp = client.post(f"/api/v1/fieldwork-qc/flags/{flag.id}/resolve",
+                       json={"status": "dismissed"}, headers=viewer_headers)
     assert resp.status_code == 403, resp.text

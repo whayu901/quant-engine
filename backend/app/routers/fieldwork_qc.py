@@ -14,16 +14,18 @@ from sqlalchemy import func
 
 from .. import models, schemas
 from ..models import _uid
-from ..models_fieldwork import FieldworkBatch, Interview, QCFlag
+from ..models_fieldwork import FieldworkBatch, Interview, QCFlag, InterviewerScore
 from ..models_phase1 import ImportJob
 from ..schemas_fieldwork import (
     FieldworkBatchIn, FieldworkBatchOut, InterviewOut, FieldworkImportOut,
-    InterviewDetailOut, QCFlagOut,
+    InterviewDetailOut, QCFlagOut, InterviewerScoreOut, FlagResolveIn,
+    FieldworkReportOut,
 )
 from ..database import get_db
 from ..deps import get_current_user, require_role, owned_or_404
 from ..storage import storage
 from ..tasks import import_fieldwork_batch, run_fieldwork_qc
+from .. import fieldwork_qc
 
 router = APIRouter(prefix="/api/v1/fieldwork-qc", tags=["fieldwork-qc"])
 
@@ -184,3 +186,77 @@ def list_interviews(
         items=items, total=total, skip=skip, limit=limit,
         has_more=(skip + limit) < total,
     )
+
+
+# ---------------------------------------------------------------------------
+# Phase 4 — interviewer anomaly, report, reviewer console
+# ---------------------------------------------------------------------------
+
+def _active_checks_by_interview(db, batch_id):
+    """Map interview.id -> set of non-dismissed check names for a batch."""
+    rows = (db.query(QCFlag.interview_id, QCFlag.check)
+            .filter(QCFlag.batch_id == batch_id, QCFlag.status != "dismissed")
+            .all())
+    out = {}
+    for interview_id, check in rows:
+        out.setdefault(interview_id, set()).add(check)
+    return out
+
+
+@router.get("/batches/{batch_id}/interviewers", response_model=list[InterviewerScoreOut])
+def list_interviewers(batch_id: str,
+                      user: models.User = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """Per-interviewer anomaly scores, ranked most-anomalous first."""
+    owned_or_404(db, FieldworkBatch, batch_id, user.org_id)
+    return (db.query(InterviewerScore)
+            .filter(InterviewerScore.org_id == user.org_id,
+                    InterviewerScore.batch_id == batch_id)
+            .order_by(InterviewerScore.anomaly_score.desc(),
+                      InterviewerScore.interviewer_id.asc())
+            .all())
+
+
+@router.get("/batches/{batch_id}/report", response_model=FieldworkReportOut)
+def get_report(batch_id: str,
+               user: models.User = Depends(get_current_user),
+               db: Session = Depends(get_db)):
+    """Read-only QC report computed from stored statuses + active flags."""
+    owned_or_404(db, FieldworkBatch, batch_id, user.org_id)
+    interviews = (db.query(Interview)
+                  .filter(Interview.org_id == user.org_id,
+                          Interview.batch_id == batch_id).all())
+    checks_by_iv = _active_checks_by_interview(db, batch_id)
+    return fieldwork_qc.build_report(interviews, checks_by_iv)
+
+
+@router.post("/flags/{flag_id}/resolve", response_model=QCFlagOut)
+def resolve_flag(flag_id: str, body: FlagResolveIn,
+                 user: models.User = Depends(require_role("admin", "researcher")),
+                 db: Session = Depends(get_db)):
+    """Reviewer decision on a flag; recomputes the interview's qc_status.
+
+    The interview is re-scored from its non-dismissed flags (an override path):
+    dismiss every flag on an interview and it falls back to `pass`.
+    """
+    if body.status not in ("confirmed", "dismissed"):
+        raise HTTPException(422, "status must be 'confirmed' or 'dismissed'")
+
+    flag = owned_or_404(db, QCFlag, flag_id, user.org_id)
+    flag.status = body.status
+    flag.reviewer_id = user.id
+    if body.note:
+        flag.detail = {**(flag.detail or {}), "reviewer_note": body.note}
+
+    # Recompute the interview from its remaining (non-dismissed) flags. Filter in
+    # Python so the just-updated flag is honoured regardless of session autoflush.
+    interview = db.get(Interview, flag.interview_id)
+    all_flags = db.query(QCFlag).filter(QCFlag.interview_id == interview.id).all()
+    active = [f for f in all_flags if f.status != "dismissed"]
+    qc_status, qc_score = fieldwork_qc.score(
+        [{"check": f.check, "severity": f.severity} for f in active])
+    interview.qc_status = qc_status
+    interview.qc_score = qc_score
+
+    db.commit(); db.refresh(flag)
+    return flag

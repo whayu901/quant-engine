@@ -49,6 +49,20 @@ SEVERITY = {
 # Score penalty per severity (documented; clean interviews always score 1.0/pass).
 _PENALTY = {WARN: 0.2, CRITICAL: 0.5}
 
+# Fabrication / curbstoning checks — these are what reject as fraud (as opposed
+# to `eligibility`, which is a screen-out, not fabrication).
+FABRICATION_CHECKS = frozenset({GPS_IDENTICAL, DUPLICATE_OPENEND, CADENCE_IMPOSSIBLE})
+
+# Interviewer anomaly weights (each input ratio is 0..1, so the score is 0..1).
+#   anomaly = 0.5 * critical-fabrication ratio
+#           + 0.2 * speeder ratio
+#           + 0.3 * overall flag rate
+# Fabrication is weighted highest (it is deliberate cheating); speeding and the
+# overall flag rate are softer signals.
+_ANOMALY_W_FABRICATION = 0.5
+_ANOMALY_W_SPEEDER = 0.2
+_ANOMALY_W_FLAG_RATE = 0.3
+
 # --- defaults (mirror the reference dataset) --------------------------------
 DEFAULT_RULES = {
     "speeder_below": 240,
@@ -266,3 +280,99 @@ def score(flags) -> tuple[str, float]:
     if any(f["severity"] == CRITICAL for f in flags):
         return "reject", qc_score
     return "flag", qc_score
+
+
+def compute_interviewer_scores(interviews, checks_by_iv_id) -> list[dict]:
+    """Per-interviewer aggregates for anomaly ranking (pure, no DB).
+
+    `checks_by_iv_id` maps interview.id -> set of active check names. Returns a
+    list of dicts (one per interviewer) with n_interviews, avg_duration_sec,
+    flag_rate and anomaly_score. See the weights above for the formula.
+    """
+    groups = defaultdict(list)
+    for iv in interviews:
+        groups[iv.interviewer_id].append(iv)
+
+    out = []
+    for interviewer, group in groups.items():
+        n = len(group)
+        durations = [iv.duration_sec for iv in group if iv.duration_sec is not None]
+        avg_duration = round(sum(durations) / len(durations), 1) if durations else None
+
+        n_flagged = n_fab = n_speeder = 0
+        for iv in group:
+            checks = checks_by_iv_id.get(iv.id, set())
+            if checks:
+                n_flagged += 1
+            if checks & FABRICATION_CHECKS:
+                n_fab += 1
+            if SPEEDER in checks:
+                n_speeder += 1
+
+        flag_rate = n_flagged / n if n else 0.0
+        fab_ratio = n_fab / n if n else 0.0
+        speeder_ratio = n_speeder / n if n else 0.0
+        anomaly = (_ANOMALY_W_FABRICATION * fab_ratio
+                   + _ANOMALY_W_SPEEDER * speeder_ratio
+                   + _ANOMALY_W_FLAG_RATE * flag_rate)
+
+        out.append({
+            "interviewer_id": interviewer,
+            "n_interviews": n,
+            "avg_duration_sec": avg_duration,
+            "flag_rate": round(flag_rate, 4),
+            "anomaly_score": round(min(1.0, anomaly), 4),
+        })
+    return out
+
+
+def build_report(interviews, checks_by_iv_id) -> dict:
+    """Read-only QC report computed from stored statuses + active flags.
+
+    Separates fraud (fabrication flags) from eligibility (a screen-out). Axes:
+      approved       = qc_status == pass
+      fraud_rejected = has any fabrication flag
+      ineligible     = has any eligibility flag
+      needs_review   = qc_status == flag (warn-only)
+    Plus per-check breakdown, per-interviewer summary, and an approved/rejected
+    trend bucketed by the hour the interview started.
+    """
+    approved = fraud_rejected = ineligible = needs_review = 0
+    by_check = {}
+    trend = {}  # hour -> {"approved": n, "rejected": n}
+
+    for iv in interviews:
+        checks = checks_by_iv_id.get(iv.id, set())
+        for c in checks:
+            by_check[c] = by_check.get(c, 0) + 1
+
+        if iv.qc_status == "pass":
+            approved += 1
+        elif iv.qc_status == "flag":
+            needs_review += 1
+        if checks & FABRICATION_CHECKS:
+            fraud_rejected += 1
+        if ELIGIBILITY in checks:
+            ineligible += 1
+
+        if iv.started_at is not None:
+            bucket = iv.started_at.strftime("%Y-%m-%dT%H:00")
+            row = trend.setdefault(bucket, {"approved": 0, "rejected": 0})
+            if iv.qc_status == "pass":
+                row["approved"] += 1
+            elif iv.qc_status == "reject":
+                row["rejected"] += 1
+
+    interviewers = compute_interviewer_scores(interviews, checks_by_iv_id)
+    interviewers.sort(key=lambda s: s["anomaly_score"], reverse=True)
+
+    return {
+        "interviews_total": len(interviews),
+        "approved": approved,
+        "fraud_rejected": fraud_rejected,
+        "ineligible": ineligible,
+        "needs_review": needs_review,
+        "by_check": by_check,
+        "interviewers": interviewers,
+        "trend": [{"time": k, **v} for k, v in sorted(trend.items())],
+    }

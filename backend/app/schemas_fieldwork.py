@@ -77,3 +77,47 @@ class QCFlagOut(BaseModel):
 class InterviewDetailOut(InterviewOut):
     """Interview detail with its QC flags."""
     flags: list[QCFlagOut] = []
+
+
+class InterviewerScoreOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: str
+    batch_id: str
+    interviewer_id: str
+    n_interviews: int
+    avg_duration_sec: Optional[float] = None
+    flag_rate: Optional[float] = None
+    anomaly_score: Optional[float] = None
+    computed_at: Optional[datetime] = None
+
+
+class FlagResolveIn(BaseModel):
+    """Reviewer decision on a QC flag."""
+    status: str                                  # confirmed | dismissed
+    note: Optional[str] = None
+
+
+class InterviewerSummary(BaseModel):
+    interviewer_id: str
+    n_interviews: int
+    avg_duration_sec: Optional[float] = None
+    flag_rate: Optional[float] = None
+    anomaly_score: Optional[float] = None
+
+
+class TrendPoint(BaseModel):
+    time: str
+    approved: int
+    rejected: int
+
+
+class FieldworkReportOut(BaseModel):
+    """Read-only QC report (fraud separated from eligibility screen-outs)."""
+    interviews_total: int
+    approved: int
+    fraud_rejected: int
+    ineligible: int
+    needs_review: int
+    by_check: Dict[str, int]
+    interviewers: list[InterviewerSummary]
+    trend: list[TrendPoint]

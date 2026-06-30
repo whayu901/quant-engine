@@ -8,13 +8,14 @@ from .storage import storage
 
 @celery_app.task(name="run_fieldwork_qc")
 def run_fieldwork_qc(batch_id: str):
-    """Phase 3: run heuristic detectors over a batch's interviews.
+    """Phase 3-4: run heuristic detectors over a batch's interviews.
 
-    Idempotent — clears prior QCFlags and resets qc_status before recomputing,
-    so a re-run never double-counts. Writes QCFlags, sets qc_status/qc_score per
-    interview, and rolls up batch.result_summary (counts per check + per status).
+    Idempotent — clears prior QCFlags + InterviewerScores and resets qc_status
+    before recomputing, so a re-run never double-counts. Writes QCFlags, sets
+    qc_status/qc_score per interview, recomputes per-interviewer anomaly scores,
+    and rolls up batch.result_summary (counts per check + per status).
     """
-    from .models_fieldwork import FieldworkBatch, Interview, QCFlag
+    from .models_fieldwork import FieldworkBatch, Interview, QCFlag, InterviewerScore
     from . import fieldwork_qc
 
     db = SessionLocal()
@@ -27,8 +28,10 @@ def run_fieldwork_qc(batch_id: str):
 
         interviews = db.query(Interview).filter(Interview.batch_id == batch_id).all()
 
-        # Idempotent reset: drop prior flags + reset statuses for a clean recompute.
+        # Idempotent reset: drop prior flags + scores + reset statuses.
         db.query(QCFlag).filter(QCFlag.batch_id == batch_id).delete(synchronize_session=False)
+        db.query(InterviewerScore).filter(
+            InterviewerScore.batch_id == batch_id).delete(synchronize_session=False)
         for iv in interviews:
             iv.qc_status = "pending"
             iv.qc_score = None
@@ -36,9 +39,11 @@ def run_fieldwork_qc(batch_id: str):
 
         rules = fieldwork_qc.resolve_rules(batch.rules)
         flags_by_iv = {}
+        checks_by_iv = {iv.id: set() for iv in interviews}
         by_check = {}
         for iv, flag in fieldwork_qc.run_all_detectors(interviews, rules):
             flags_by_iv.setdefault(id(iv), []).append(flag)
+            checks_by_iv[iv.id].add(flag["check"])
             by_check[flag["check"]] = by_check.get(flag["check"], 0) + 1
             db.add(QCFlag(
                 org_id=iv.org_id, interview_id=iv.id, batch_id=batch_id,
@@ -52,6 +57,15 @@ def run_fieldwork_qc(batch_id: str):
             iv.qc_status = status
             iv.qc_score = qc_score
             by_status[status] = by_status.get(status, 0) + 1
+
+        # Per-interviewer anomaly scores.
+        for s in fieldwork_qc.compute_interviewer_scores(interviews, checks_by_iv):
+            db.add(InterviewerScore(
+                org_id=batch.org_id, batch_id=batch_id,
+                interviewer_id=s["interviewer_id"], n_interviews=s["n_interviews"],
+                avg_duration_sec=s["avg_duration_sec"], flag_rate=s["flag_rate"],
+                anomaly_score=s["anomaly_score"],
+            ))
 
         batch.result_summary = {
             "interviews": len(interviews),
