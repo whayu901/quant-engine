@@ -31,6 +31,11 @@ FastAPI + Postgres/SQLite + Alembic + Celery/Redis; frontend Next.js + MUI.
 ## Cleared — tech debt ✅
 
 - Migration chain runs from an empty DB (`alembic upgrade head` green; single head).
+- **Postgres verified (2026-07-01):** full stack now boots via `docker-compose up` on Postgres 16
+  (backend `/health` 200; db/redis/minio healthy). Fixed several SQLite-only migration/seed bugs
+  (`sa.DATETIME()`→`sa.DateTime()`, dropped a btree index on a JSON column, seed model-registration +
+  field drift + FK-order flushes, added missing `slowapi` dep). Note: host 5432 is usually taken by a
+  native Postgres → `db` container remapped to host 5433 (backend reaches `db:5432` internally).
 - Frontend builds clean (`next build` green, no `ignoreBuildErrors`); dead Tailwind code removed.
 - Open item: orphan `frontend/src/` is gitignored (harmless to CI/deploy; tidy up locally so local == repo).
 

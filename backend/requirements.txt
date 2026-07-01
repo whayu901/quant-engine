@@ -9,6 +9,7 @@ passlib[bcrypt]
 bcrypt==4.0.1
 python-jose[cryptography]
 python-multipart
+slowapi==0.1.*          # Rate limiting (used in main.py, auth.py, analysis.py)
 anthropic
 celery==5.*
 redis

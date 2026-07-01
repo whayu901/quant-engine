@@ -16,6 +16,16 @@ from app.models import (
     Org, User, Project, Transcript, TranscriptSegment,
     Analysis, Theme, Verbatim, Implication, MediaAsset
 )
+# Register all model modules so SQLAlchemy can resolve cross-module
+# relationships (e.g. Org -> WhiteLabelConfig) before mapper configuration.
+# Mirror the runtime set from app/main.py (phase6 stays disabled).
+from app import models_phase1  # noqa: F401
+from app import models_phase2  # noqa: F401
+from app import models_phase3  # noqa: F401
+from app import models_phase4  # noqa: F401
+from app import models_phase5  # noqa: F401
+from app import models_enterprise  # noqa: F401
+from app import models_fieldwork  # noqa: F401
 from app.security import hash_pw
 import random
 
@@ -40,6 +50,7 @@ def seed_database():
             created_at=datetime.utcnow() - timedelta(days=30)
         )
         db.add(demo_org)
+        db.flush()  # persist org before dependent rows (FK)
 
         # Create demo users
         admin_user = User(
@@ -73,6 +84,7 @@ def seed_database():
         )
 
         db.add_all([admin_user, researcher_user, viewer_user])
+        db.flush()  # persist users before dependent rows (FK)
 
         # Create demo project
         demo_project = Project(
@@ -80,11 +92,11 @@ def seed_database():
             org_id=demo_org.id,
             name="Indonesian Consumer Behavior Study",
             description="Qualitative research on shopping habits in Jakarta and Surabaya",
-            created_by_id=researcher_user.id,
-            visibility="org",
+            created_by=researcher_user.id,
             created_at=datetime.utcnow() - timedelta(days=14)
         )
         db.add(demo_project)
+        db.flush()  # persist project before dependent rows (FK)
 
         # Create demo media asset
         demo_media = MediaAsset(
@@ -92,8 +104,8 @@ def seed_database():
             org_id=demo_org.id,
             project_id=demo_project.id,
             filename="interview_jakarta_01.mp3",
-            media_type="audio",
-            duration_seconds=1800,  # 30 minutes
+            kind="audio",
+            duration_sec=1800,  # 30 minutes
             storage_key="media/demo-org-001/demo-project-001/interview_jakarta_01.mp3",
             created_at=datetime.utcnow() - timedelta(days=10)
         )
@@ -104,13 +116,14 @@ def seed_database():
             id="demo-transcript-001",
             org_id=demo_org.id,
             project_id=demo_project.id,
-            name="Jakarta Focus Group - Session 1",
+            title="Jakarta Focus Group - Session 1",
             language="id-en",  # Indonesian + English code-mixed
             source_media_id=demo_media.id,
             transcription_status="completed",
             created_at=datetime.utcnow() - timedelta(days=10)
         )
         db.add(demo_transcript)
+        db.flush()  # persist transcript before segments/analysis (FK)
 
         # Create transcript segments with realistic Indonesian consumer research content
         segments_data = [
@@ -131,10 +144,10 @@ def seed_database():
                 id=f"demo-segment-{idx+1:03d}",
                 transcript_id=demo_transcript.id,
                 speaker=speaker,
-                start_time=start,
-                end_time=end,
+                start_sec=start,
+                end_sec=end,
                 text=text,
-                segment_index=idx
+                idx=idx
             )
             db.add(segment)
 
@@ -143,11 +156,11 @@ def seed_database():
             id="demo-analysis-001",
             org_id=demo_org.id,
             transcript_id=demo_transcript.id,
-            name="Consumer Behavior Analysis - Jakarta FGD",
             status="completed",
             created_at=datetime.utcnow() - timedelta(days=7)
         )
         db.add(demo_analysis)
+        db.flush()  # persist analysis before themes/implications (FK)
 
         # Create themes
         themes_data = [
@@ -174,17 +187,17 @@ def seed_database():
                 analysis_id=demo_analysis.id,
                 name=name,
                 description=desc,
-                order_index=idx
+                order_idx=idx
             )
             db.add(theme)
+            db.flush()  # persist theme before verbatims (FK)
 
             # Add verbatims for each theme
             for v_idx, v_text in enumerate(verbatims):
                 verbatim = Verbatim(
                     id=f"demo-verbatim-{idx+1:03d}-{v_idx+1:03d}",
                     theme_id=theme.id,
-                    text=v_text,
-                    segment_ids=[f"demo-segment-{random.randint(1,10):03d}"]
+                    quote=v_text
                 )
                 db.add(verbatim)
 
@@ -202,7 +215,7 @@ def seed_database():
                 id=f"demo-implication-{idx+1:03d}",
                 analysis_id=demo_analysis.id,
                 text=text,
-                order_index=idx
+                order_idx=idx
             )
             db.add(implication)
 

@@ -583,7 +583,6 @@ def upgrade() -> None:
     )
     with op.batch_alter_table('evidence', schema=None) as batch_op:
         batch_op.create_index('idx_evidence_project', ['project_id'], unique=False)
-        batch_op.create_index('idx_evidence_themes', ['themes'], unique=False)
 
     op.create_table('insights',
     sa.Column('id', sa.String(length=36), nullable=False),
@@ -1027,7 +1026,6 @@ def downgrade() -> None:
 
     op.drop_table('insights')
     with op.batch_alter_table('evidence', schema=None) as batch_op:
-        batch_op.drop_index('idx_evidence_themes')
         batch_op.drop_index('idx_evidence_project')
 
     op.drop_table('evidence')
